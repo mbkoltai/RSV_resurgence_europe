@@ -216,3 +216,54 @@ int fcn_vect_sum(IntegerVector vec_int, NumericVector vect_num){
 //   vect_out.elem(vect_inds)=vect_vals;
 //   return vect_out;
 // }
+
+// [[Rcpp::depends(RcppArmadillo)]]
+// [[Rcpp::export]]
+int fcn_ind_seq(int k_age, String k_comp, int k_inf,
+                int n_age, StringVector n_comp, arma::vec v_inf) {
+  arma::vec k_lev(n_age); int i_comp;
+  for (int i=0;i<n_comp.size();i++) {if (n_comp[i]==k_comp) {i_comp=i+1;}}
+  for (int i=0;i<n_age;i++) { if (i+1<k_age) {k_lev[i]=1.0;} else {k_lev[i]=0.0;} }
+  float k_seq = arma::as_scalar(k_lev.t()*v_inf)*n_comp.size() + (i_comp-1)*v_inf[k_age-1] + k_inf;
+  return k_seq; // return i_comp;
+}
+
+
+// [[Rcpp::depends(RcppArmadillo)]]
+// [[Rcpp::export]]
+arma::vec fcn_aging_matrix(int n_var, int n_age,arma::vec vec_inf_byage, StringVector comp_list, arma::vec agegr_dur){
+arma::vec vect_age_out_par(n_var); 
+arma::mat vect_age_in_par_matr(n_var,n_var);
+for (int i_age=0;i_age<n_age;i_age++) {
+  for (int i_comp=0;i_comp<comp_list.size();i_comp++) {
+    for (int i_inf=0;i_inf<vec_inf_byage[i_age];i_inf++) {
+      int n_seq=fcn_ind_seq(i_age,comp_list[i_comp],i_inf,n_age,comp_list,vec_inf_byage);
+      if (i_age<n_age-1) {vect_age_out_par[n_seq]=1/agegr_dur[i_age];} else {vect_age_out_par[n_seq]=0;}
+      for (int i_int=0;i_int<n_age;i_int++) {vect_age_in_par_matr(n_seq-1,i_int)=0.0;}
+      if (i_age>1) {
+        // only one level of infection in given age group
+        if (vec_inf_byage[i_age]==1) {
+          // 2 levels of infection in preceding age group
+          if (vec_inf_byage[i_age-1]==2) { 
+            arma::vec nonzero_inds(2);
+            nonzero_inds(0)=fcn_ind_seq(i_age-1,comp_list[i_comp],1,n_age,comp_list,vec_inf_byage);
+            nonzero_inds(1)=fcn_ind_seq(i_age-1,comp_list[i_comp],2,n_age,comp_list,vec_inf_byage);
+            vect_age_in_par_matr(n_seq,nonzero_inds(0))=vect_age_out_par(nonzero_inds(0));
+            vect_age_in_par_matr(n_seq,nonzero_inds(1))=vect_age_out_par(nonzero_inds(1));
+          } else {
+            // 1 level of infection in preceding age group
+            int nonzero_ind=fcn_ind_seq(i_age-1,comp_list[i_comp],i_inf,n_age,comp_list,vec_inf_byage);
+            vect_age_in_par_matr(n_seq,nonzero_ind)=vect_age_out_par(nonzero_ind);
+          }
+        } else {
+          // 2 levels of inf in current age group (->also 2 in preceding)
+          int nonzero_ind=fcn_ind_seq(i_age-1,comp_list[i_comp],i_inf,n_age,comp_list,vec_inf_byage);
+          vect_age_in_par_matr(n_seq,nonzero_ind)=vect_age_out_par(nonzero_ind);
+        }
+      } // agegroups>1
+    } // loop infect levels
+  } // loop compartms
+} // loop age groups
+
+return vect_age_out_par;
+}

@@ -176,9 +176,9 @@ arma::mat rcpp_age_struct_delay_eq(arma::vec t_span, arma::mat contmatr,
             vect_age_in_par_matr(n_seq,nonzero_ind)=vect_age_out_par(nonzero_ind);
           }
         } // agegroups>1
-      }
-    }
-  }
+      } // loop infect levels
+    } // loop compartms
+  } // loop age groups
   return vect_age_in_par_matr;
 }
 
