@@ -1,7 +1,8 @@
 # gitignore
 .Rhistory
-ABC/
+# ABC/
 background/
-ecdc_data/
+data/
+# ecdc_data/
 output/
 refresh_gitignore.sh
