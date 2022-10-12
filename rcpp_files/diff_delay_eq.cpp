@@ -103,6 +103,71 @@ arma::mat fcn_matr_ind(arma::mat matr,arma::vec inf_ind) { // IntegerVector
 
 // [[Rcpp::depends(RcppArmadillo)]]
 // [[Rcpp::export]]
+arma::mat fcn_waning_matrix(int n_var, int n_age, arma::vec vec_inf_byage, StringVector comp_list){
+  arma::mat matr_waning(n_var,n_var);
+  for (int i_age=0;i_age<n_age;i_age++) {
+    for (int i_inf=0;i_inf<vec_inf_byage[i_age];i_inf++) {
+      int S_ind=fcn_ind_seq((i_age+1),"S",i_inf+1,n_age,comp_list,vec_inf_byage)-1;
+      int R_ind=fcn_ind_seq((i_age+1),"R",i_inf+1,n_age,comp_list,vec_inf_byage)-1;
+      matr_waning(S_ind,R_ind)=1; matr_waning(R_ind,R_ind)=-1;
+    }
+  }
+  return matr_waning;
+}
+
+
+
+// this fcn builds the matrix of aging and death terms
+// [[Rcpp::depends(RcppArmadillo)]]
+// [[Rcpp::export]]
+arma::mat fcn_aging_matrix(int n_var, int n_age,
+                           arma::vec vec_inf_byage, arma::vec agegr_dur, arma::vec death_rates,
+                           StringVector comp_list){
+  arma::vec vect_age_out_par(n_var); arma::vec vect_death(n_var); 
+  arma::mat matr_aging_death_coeffs(n_var,n_var);
+  for (int i_age=0;i_age<n_age;i_age++) {
+    for (int i_comp=0;i_comp<comp_list.size();i_comp++) {
+      for (int i_inf=0;i_inf<vec_inf_byage[i_age];i_inf++) {
+        // fcn_ind_seq(k_age=,k_comp=,k_inf=,n_age=,n_comp=,v_inf=)
+        int n_seq=fcn_ind_seq(i_age+1,comp_list[i_comp],i_inf+1,n_age,comp_list,vec_inf_byage)-1;
+        if (i_age<n_age-1) {vect_age_out_par[n_seq]=1/agegr_dur[i_age];} else {vect_age_out_par[n_seq]=0;}
+        for (int i_int=0;i_int<n_age;i_int++) {matr_aging_death_coeffs(n_seq,i_int)=0.0;}
+        vect_death(n_seq)=death_rates[i_age];
+        if (i_age>0) {
+          // only one level of infection in given age group
+          if (vec_inf_byage[i_age]==1) {
+            // 2 levels of infection in preceding age group
+            if (vec_inf_byage[i_age-1]==2) {
+              arma::vec nonzero_inds(2);
+              nonzero_inds(0)=fcn_ind_seq((i_age+1)-1,comp_list[i_comp],1,n_age,comp_list,vec_inf_byage)-1;
+              nonzero_inds(1)=fcn_ind_seq((i_age+1)-1,comp_list[i_comp],2,n_age,comp_list,vec_inf_byage)-1;
+              matr_aging_death_coeffs(n_seq,nonzero_inds(0))=vect_age_out_par(nonzero_inds(0));
+              matr_aging_death_coeffs(n_seq,nonzero_inds(1))=vect_age_out_par(nonzero_inds(1));
+            } else {
+              // 1 level of infection in preceding age group
+              int nonzero_ind=fcn_ind_seq((i_age+1)-1,comp_list[i_comp],(i_inf+1),n_age,comp_list,vec_inf_byage)-1;
+              matr_aging_death_coeffs(n_seq,nonzero_ind)=vect_age_out_par(nonzero_ind);
+            }
+          } else {
+            // 2 levels of inf in current age group (->also 2 in preceding)
+            int nonzero_ind=fcn_ind_seq((i_age+1)-1,comp_list[i_comp],i_inf+1,n_age,comp_list,vec_inf_byage)-1;
+            matr_aging_death_coeffs(n_seq,nonzero_ind)=vect_age_out_par(nonzero_ind);
+          }
+        } // agegroups>1
+        
+      } // loop infect levels
+    } // loop compartms
+  } // loop age groups
+  
+  // assign 'age out' and death terms to diagonal matrix elements
+  for (int k_diag=0;k_diag<n_var;k_diag++) {
+    matr_aging_death_coeffs(k_diag,k_diag)=-(vect_age_out_par[k_diag]+vect_death[k_diag]);}
+  return matr_aging_death_coeffs;
+}
+
+// get multiple sequential indices for a give compartment, given levels of infection per age group
+// [[Rcpp::depends(RcppArmadillo)]]
+// [[Rcpp::export]]
 arma::mat fcn_get_seq_inds(arma::vec vec_inf_byage,int n_age,StringVector comp_list, String sel_var){
   arma::mat inf_inds(sum(vec_inf_byage),2); // arma::uvec inf_inds(sum(vec_inf_byage)); 
   int inf_ind_cnt=0;
@@ -116,16 +181,32 @@ arma::mat fcn_get_seq_inds(arma::vec vec_inf_byage,int n_age,StringVector comp_l
   return inf_inds;
 }
 
+// build matrix of I->R transitions (needs to be multiplied by coefficient)
+// [[Rcpp::depends(RcppArmadillo)]]
+// [[Rcpp::export]]
+arma::mat fcn_recov_matrix(int n_var, int n_age, arma::vec vec_inf_byage, StringVector comp_list){
+  arma::mat matr_recov(n_var,n_var);
+  for (int i_age=0;i_age<n_age;i_age++) {
+    for (int i_inf=0;i_inf<vec_inf_byage[i_age];i_inf++) {
+      int R_ind=fcn_ind_seq((i_age+1),"R",i_inf+1,n_age,comp_list,vec_inf_byage)-1;
+      int I_ind=fcn_ind_seq((i_age+1),"I",i_inf+1,n_age,comp_list,vec_inf_byage)-1;
+      matr_recov(R_ind,I_ind)=1; matr_recov(I_ind,I_ind)=-1;
+    }
+  }
+  return matr_recov;
+}
+
 // [[Rcpp::depends(RcppArmadillo)]]
 // [[Rcpp::export]]
 arma::mat rcpp_age_struct_delay_eq(arma::vec t_span, arma::mat contmatr, 
                                     arma::vec pop_size, arma::vec agegr_dur, arma::vec susc_pars,
+                                    arma::vec vec_inf_byage, arma::vec death_rates,
                                     List params, NumericVector waning_distr, 
-                                    arma::vec vec_inf_byage, StringVector comp_list) {
+                                    StringVector comp_list) {
   
   float daily_births = as<float>(params["daily_births"]);
   float beta_scale = as<float>(params["beta_scale"]); float gamma = as<float>(params["gamma"]);
-  float aging_rate = as<float>(params["aging_rate"]); float death_rate = as<float>(params["death_rate"]);
+  // float aging_rate = as<float>(params["aging_rate"]); // float death_rate = as<float>(params["death_rate"]);
   float I_init = as<float>(params["I_init"]); float imp_val = as<float>(params["imp_val"]);
   int n_wane = waning_distr.size(); int t_n = t_span.size(); 
   int n_age=pop_size.size();
@@ -134,7 +215,6 @@ arma::mat rcpp_age_struct_delay_eq(arma::vec t_span, arma::mat contmatr,
   for (int k=0;k<susc_matr.n_rows;k++) {susc_matr(k,k)=susc_pars[k];}
   arma::mat cont_matr_adj = fcn_matr_ind(contmatr,vec_inf_byage);
   // matrix product: suscept*contact matrix(adjusted)
-  // arma::mat inf_vector=susc_matr*cont_matr_adj;
   // vector of all variables
   int n_var=comp_list.size()*sum(vec_inf_byage); 
   arma::vec all_vars_vect(n_var); // all_vars_vect=arma::linspace(1,n_var,n_var);
@@ -146,39 +226,20 @@ arma::mat rcpp_age_struct_delay_eq(arma::vec t_span, arma::mat contmatr,
   // arma::vec lambda_vect=susc_matr*cont_matr_adj*inf_vect_val;
   // extended, so it has same dimension as vector of all variables
   arma::vec lambda_vect_ext = all_vars_vect; lambda_vect_ext.elem(inf_ind_uvec)=susc_matr*cont_matr_adj*inf_vect_val;
-  // vector of transitions btwn compartms due to aging
-  arma::vec vect_age_out_par(n_var); 
-  arma::mat vect_age_in_par_matr(n_var,n_var);
-  for (int i_age=0;i_age<n_age;i_age++) {
-    for (int i_comp=0;i_comp<comp_list.size();i_comp++) {
-      for (int i_inf=0;i_inf<vec_inf_byage[i_age];i_inf++) {
-        int n_seq=fcn_ind_seq(i_age,comp_list[i_comp],i_inf,n_age,comp_list,vec_inf_byage);
-        if (i_age<n_age-1) {vect_age_out_par[n_seq]=1/agegr_dur[i_age];} else {vect_age_out_par[n_seq]=0;}
-          for (int i_int=0;i_int<n_age;i_int++) {vect_age_in_par_matr(n_seq-1,i_int)=0.0;}
-        if (i_age>1) {
-          // only one level of infection in given age group
-          if (vec_inf_byage[i_age]==1) {
-            // 2 levels of infection in preceding age group
-            if (vec_inf_byage[i_age-1]==2) { 
-              arma::vec nonzero_inds(2);
-              nonzero_inds(0)=fcn_ind_seq(i_age-1,comp_list[i_comp],1,n_age,comp_list,vec_inf_byage);
-              nonzero_inds(1)=fcn_ind_seq(i_age-1,comp_list[i_comp],2,n_age,comp_list,vec_inf_byage);
-              vect_age_in_par_matr(n_seq,nonzero_inds(0))=vect_age_out_par(nonzero_inds(0));
-              vect_age_in_par_matr(n_seq,nonzero_inds(1))=vect_age_out_par(nonzero_inds(1));
-            } else {
-              // 1 level of infection in preceding age group
-              int nonzero_ind=fcn_ind_seq(i_age-1,comp_list[i_comp],i_inf,n_age,comp_list,vec_inf_byage);
-              vect_age_in_par_matr(n_seq,nonzero_ind)=vect_age_out_par(nonzero_ind);
-            }
-          } else {
-            // 2 levels of inf in current age group (->also 2 in preceding)
-            int nonzero_ind=fcn_ind_seq(i_age-1,comp_list[i_comp],i_inf,n_age,comp_list,vec_inf_byage);
-            vect_age_in_par_matr(n_seq,nonzero_ind)=vect_age_out_par(nonzero_ind);
-          }
-        } // agegroups>1
-      } // loop infect levels
-    } // loop compartms
-  } // loop age groups
-  return vect_age_in_par_matr;
+  // vector of transitions btwn compartms due to aging & death
+  arma::mat matr_aging_death_coeffs(n_var,n_var);
+  matr_aging_death_coeffs=fcn_aging_matrix(n_var,n_age,vec_inf_byage,agegr_dur,death_rates,comp_list);
+  // matrix for waning process (R->S)
+  arma::mat matr_waning(n_var,n_var); matr_waning=fcn_waning_matrix(n_var,n_age,vec_inf_byage,comp_list);
+  // matrix for recovery process (R->S)
+  arma::mat matr_recov(n_var,n_var); matr_recov=fcn_recov_matrix(n_var,n_age,vec_inf_byage,comp_list);
+  return matr_recov;
+  
+  // loop forward in time
+  
 }
 
+// rcpp_age_struct_delay_eq(t_span=1:1e3,contmatr=randn(n=4,m=4),pop_size=c(1.48,2.38,10.27,52.67),
+//                          agegr_dur=c(2,3,13,80),susc_pars=rep(1/10,6),
+//                          vec_inf_byage=c(2,2,1,1),death_rates=c(1/1e3,1/1e4,1/1e5,1/1e5),
+//                          params=params_dde,waning_distr=waning_prob,comp_list=c("S","I","R"))

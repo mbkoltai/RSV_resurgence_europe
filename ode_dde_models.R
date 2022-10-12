@@ -269,3 +269,16 @@ left_join(df_troughs,df_periods %>% select(p,param) %>% distinct()) %>%
   xlab("") + ylab("attack rate (%)") + labs(color="") + guides(color="none")
 # save
 ggsave(paste0("output/delay_eq_noforcing_AR_period_length.png"),width=25,height=18,units="cm")
+
+### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
+
+params_dde=c("daily_births"=700e3/365,"gamma"=1/7,"beta_scale"=1/5,"I_init"=10,"imp_val"=10)
+par_perms=expand.grid(birthrate=c(round(700e3/365)),waning_shape=c(8,10,16,20),t_waning=c(200,350))
+waning_prob=dgamma(x=(1:round(2*par_perms$t_waning[2])),shape=par_perms$waning_shape[1],
+                   rate=par_perms$waning_shape[1]/par_perms$t_waning[1])
+waning_prob=waning_prob/sum(waning_prob)
+
+rcpp_age_struct_delay_eq(t_span=1:1e3,contmatr=randn(n=4,m=4),pop_size=c(1.48,2.38,10.27,52.67),
+                         agegr_dur=c(2,3,13,80),susc_pars=rep(1/10,6),
+                         vec_inf_byage=c(2,2,1,1),death_rates=c(1/1e3,1/1e4,1/1e5,1/1e5),
+                         params=params_dde,waning_distr=waning_prob,comp_list=c("S","I","R"))
