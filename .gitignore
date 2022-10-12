@@ -1,0 +1,7 @@
+# gitignore
+.Rhistory
+ABC/
+background/
+ecdc_data/
+output/
+refresh_gitignore.sh
