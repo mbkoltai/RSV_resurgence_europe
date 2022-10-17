@@ -284,22 +284,23 @@ sourceCpp("rcpp_files/diff_delay_eq.cpp")
 agegr_pop_size=c(1.48,2.38,10.27,52.67)*1e6; pop_stat_sol=c(1295,1941,8395,55664)*1e3
 init_conds=unlist(sapply(1:4, function(x) sapply(c(pop_stat_sol[x]/c(2,2,1,1)[x]-10,10,0), 
                                                  function(x_var) rep(x_var,c(2,2,1,1)[x])) ))
+I_age_table=data.frame(fcn_get_seq_inds(vec_inf_byage=c(2,2,1,1),n_age=4,comp_list=c("S","I","R"),sel_var = "I"))
+
 # run
 # init_conds=out_m[nrow(out_m),]
 tic();
 out_m=rcpp_age_struct_delay_eq(t_span=1:(30*365),contmatr=abs(randn(n=4,m=4)),
                                pop_size=agegr_pop_size,agegr_dur=c(2,3,13,80)*365,
-                               susc_pars=c(rep(c(1/5,1/10),2),1/10,1/10),init_vals=init_conds,
+                               susc_pars=c(rep(c(1/5,1/10),2),1/10,1/10)/5,init_vals=init_conds,
                                vec_inf_byage=c(2,2,1,1),death_rates=c(2/1e3,0.2/1e3,0.15/1e3,11.6/1e3)/365,
                                params=params_dde,waning_distr=waning_prob,comp_list=c("S","I","R"))
 toc(); 
 
 # plot infection prevalence
-I_age_table=data.frame(fcn_get_seq_inds(vec_inf_byage=c(2,2,1,1),n_age=4,comp_list=c("S","I","R"),sel_var = "I"))
 data.frame(t=1:nrow(out_m),out_m[,I_age_table$X2]) %>% pivot_longer(!t) %>% 
   mutate(k_var=I_age_table$X2[as.numeric(gsub("X","",name))],
       n_age=sapply(k_var, function(x) I_age_table$X1[I_age_table$X2 %in% x])+1,
-      n_inf=k_var-(3*sapply(n_age, function(x) sum(c(0,2,2,1,1)[1:x]))+c(2,2,1,1)[n_age]) ) %>% filter(t<20*365) %>%
+      n_inf=k_var-(3*sapply(n_age, function(x) sum(c(0,2,2,1,1)[1:x]))+c(2,2,1,1)[n_age])) %>% filter(t<20*365) %>%
 ggplot() + geom_line(aes(x=t/365,y=value/1e3,color=factor(n_inf))) + facet_wrap(~n_age,scales="free_y") + 
   xlab("year") + ylab("thousand infxs") + theme_bw() + standard_theme
 
