@@ -304,3 +304,64 @@ arma::mat fcn_recov_matrix(int n_var, int n_age, arma::vec vec_inf_byage, String
   }
   return matr_recov;
 }
+
+// [[Rcpp::depends(RcppArmadillo)]]
+// [[Rcpp::export]]
+arma::mat fcn_subset_matr(arma::mat matr_inp,arma::uvec row_inds,arma::uvec col_inds){
+  arma::mat mm=matr_inp.submat(row_inds,col_inds);
+  return mm;
+}
+
+// [[Rcpp::depends(RcppArmadillo)]]
+// [[Rcpp::export]]
+arma::vec fcn_age_ind_seq_var_ind(arma::vec vec_inf_byage,int n_age){
+  arma::vec age_ind_seq_var_ind(sum(vec_inf_byage)); int k_start;
+  for (int k=0;k<n_age;k++) { 
+    if (k==0) {k_start=0;} else {k_start=k_start+vec_inf_byage[k-1];}
+    for (int k_int=k_start;k_int<k_start+vec_inf_byage[k];k_int++) {
+      age_ind_seq_var_ind[k_int] =k; }
+  }
+  return age_ind_seq_var_ind;
+}
+
+// [[Rcpp::depends(RcppArmadillo)]]
+// [[Rcpp::export]]
+arma::vec fcn_linspace_test(int start,int end,int N){
+  arma::vec vec_a = linspace(start,end,N);
+  return vec_a;
+  }
+
+// [[Rcpp::depends(RcppArmadillo)]]
+// [[Rcpp::export]]
+arma::vec fcn_vect_subset(int start,int end,int N,arma::vec vect,bool rev_t){
+  // arma::vec vec_ind = linspace(start,end,N);
+  // arma::vec subvect=vect.subvec(start,end);
+  arma::vec subvect=vect(span(start,end));
+  if (rev_t) {subvect=reverse(subvect);}
+  return subvect;
+}
+
+// [[Rcpp::export]]
+String fcn_print_test(int n_end){
+  Rprintf("n: %i",n_end); printf("| hello \n bye"); 
+  return "";
+}
+
+// arma::vec fcn_build_waning_vect(int i_t,int l_wane,int n_recov, 
+//                                 arma::vec agegr_dur, arma::vec age_ind_seq_var_ind, arma::vec waning_distr,
+//                                 arma::mat new_recov_hist){
+// int t_waning_start=i_t-l_wane; if (t_waning_start<0) {t_waning_start=0;}
+// arma::vec waning_vect(i_t-t_waning_start);
+// arma::uvec uvec_inds(i_t-t_waning_start); float age_rate;
+// uvec_inds=linspace<uvec>(1,i_t-t_waning_start,i_t-t_waning_start)-1; 
+// arma::mat exp_vect(uvec_inds.size(),1);
+// // arma::mat waning_hist(l_wane,n_recov);
+// arma::vec waning_sum(n_recov);
+// for (int k_col=0;k_col<n_recov;k_col++) {
+//   age_rate=agegr_dur[age_ind_seq_var_ind[k_col]];
+//   exp_vect.col(0)=exp(-age_rate*linspace(1,i_t-t_waning_start,i_t-t_waning_start));
+//   waning_sum(k_col)=sum(
+//     reverse(new_recov_hist(span(t_waning_start,i_t-1),k_col)) % exp_vect % waning_distr.elem(uvec_inds));
+// }
+// return waning_sum;
+// }
