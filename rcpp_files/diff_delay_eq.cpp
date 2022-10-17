@@ -130,7 +130,8 @@ arma::mat fcn_aging_matrix(int n_var, int n_age,
       for (int i_inf=0;i_inf<vec_inf_byage[i_age];i_inf++) {
         // fcn_ind_seq(k_age=,k_comp=,k_inf=,n_age=,n_comp=,v_inf=)
         int n_seq=fcn_ind_seq(i_age+1,comp_list[i_comp],i_inf+1,n_age,comp_list,vec_inf_byage)-1;
-        if (i_age<n_age-1) {vect_age_out_par[n_seq]=1/agegr_dur[i_age];} else {vect_age_out_par[n_seq]=0;}
+        if (i_age<n_age-1) {
+          vect_age_out_par[n_seq]=1/agegr_dur[i_age];} else { vect_age_out_par[n_seq]=0; }
         for (int i_int=0;i_int<n_age;i_int++) {matr_aging_death_coeffs(n_seq,i_int)=0.0;}
         vect_death(n_seq)=death_rates[i_age];
         if (i_age>0) {
@@ -167,7 +168,7 @@ arma::mat fcn_aging_matrix(int n_var, int n_age,
   return matr_aging_death_coeffs;
 }
 
-// get multiple sequential indices for a give compartment, given levels of infection per age group
+// get multiple sequential indices for a given compartment, given levels of infection per age group
 // [[Rcpp::depends(RcppArmadillo)]]
 // [[Rcpp::export]]
 arma::mat fcn_get_seq_inds(arma::vec vec_inf_byage,int n_age,StringVector comp_list, String sel_var){

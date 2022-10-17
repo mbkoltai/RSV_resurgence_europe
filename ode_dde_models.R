@@ -284,48 +284,53 @@ sourceCpp("rcpp_files/diff_delay_eq.cpp")
 agegr_pop_size=c(1.48,2.38,10.27,52.67)*1e6; pop_stat_sol=c(1295,1941,8395,55664)*1e3
 init_conds=unlist(sapply(1:4, function(x) sapply(c(pop_stat_sol[x]/c(2,2,1,1)[x]-10,10,0), 
                                                  function(x_var) rep(x_var,c(2,2,1,1)[x])) ))
-I_age_table=data.frame(fcn_get_seq_inds(vec_inf_byage=c(2,2,1,1),n_age=4,comp_list=c("S","I","R"),sel_var = "I"))
+I_age_table=data.frame(fcn_get_seq_inds(vec_inf_byage=c(2,2,1,1),n_age=4,comp_list=c("S","I","R"),sel_var="I"))
 
 # run
 # init_conds=out_m[nrow(out_m),]
 tic();
 out_m=rcpp_age_struct_delay_eq(t_span=1:(30*365),contmatr=abs(randn(n=4,m=4)),
                                pop_size=agegr_pop_size,agegr_dur=c(2,3,13,80)*365,
-                               susc_pars=c(rep(c(1/5,1/10),2),1/10,1/10)/5,init_vals=init_conds,
+                               susc_pars=c(rep(c(1/5,1/10),2),1/10,1/10)/20,init_vals=init_conds,
                                vec_inf_byage=c(2,2,1,1),death_rates=c(2/1e3,0.2/1e3,0.15/1e3,11.6/1e3)/365,
                                params=params_dde,waning_distr=waning_prob,comp_list=c("S","I","R"))
 toc(); 
 
+stat_agegr_pop_size=sapply(1:4, function(x) 
+  sum(init_conds[ifelse(x>1,cumsum(c(2,2,1,1)*3)[x-1]+1,1):(cumsum(c(2,2,1,1)*3))[x]]))
 # plot infection prevalence
 data.frame(t=1:nrow(out_m),out_m[,I_age_table$X2]) %>% pivot_longer(!t) %>% 
   mutate(k_var=I_age_table$X2[as.numeric(gsub("X","",name))],
       n_age=sapply(k_var, function(x) I_age_table$X1[I_age_table$X2 %in% x])+1,
       n_inf=k_var-(3*sapply(n_age, function(x) sum(c(0,2,2,1,1)[1:x]))+c(2,2,1,1)[n_age])) %>% filter(t<20*365) %>%
-ggplot() + geom_line(aes(x=t/365,y=value/1e3,color=factor(n_inf))) + facet_wrap(~n_age,scales="free_y") + 
-  xlab("year") + ylab("thousand infxs") + theme_bw() + standard_theme
+  mutate(perc_value=100*value/stat_agegr_pop_size[n_age]) %>%
+ggplot() + geom_line(aes(x=t/365,y=perc_value,color=factor(n_inf))) + facet_wrap(~n_age,scales="free_y") + 
+  xlab("year") + ylab(c("infxs (1000)","% age group")[2]) + theme_bw() + standard_theme
 
+# % susceptible
+S_age_table=data.frame(fcn_get_seq_inds(vec_inf_byage=c(2,2,1,1),n_age=4,comp_list=c("S","I","R"),sel_var="S"))
+data.frame(t=1:nrow(out_m),out_m[,S_age_table$X2]) %>% pivot_longer(!t) %>% 
+  mutate(k_var=S_age_table$X2[as.numeric(gsub("X","",name))],
+     n_age=sapply(k_var, function(x) S_age_table$X1[S_age_table$X2 %in% x])+1,
+     n_inf=k_var-(3*sapply(n_age, function(x) sum(c(0,2,2,1,1)[1:x])))) %>% filter(t<20*365) %>%
+  mutate(perc_value=100*value/stat_agegr_pop_size[n_age]) %>%
+ggplot() + geom_line(aes(x=t/365,y=perc_value,color=factor(n_inf))) + facet_wrap(~n_age,scales="free_y") + 
+  xlab("year") + ylab(c("infxs (1000)","% age group")[2]) + theme_bw() + standard_theme
 
 # multiple vars
-t_end=1255; n_var=7
-for (i in (1:6)){ 
-  i_var=c(1,3,5,2,4,6)[i]-1
-  if (i==1) {
-    plot(1:t_end,round(out_m[1:t_end,n_var+i_var])/1e3,type="l",col=c("black","blue","red")[3-i%%3],ylab="thousand") 
-    } else {
-    lines(1:t_end,round(out_m[1:t_end,n_var+i_var])/1e3,type="l",col=c("black","blue","red")[3-i%%3])   }
-}
+# t_end=1255; n_var=7
+# for (i in (1:6)){ 
+#   i_var=c(1,3,5,2,4,6)[i]-1
+#   if (i==1) {
+#     plot(1:t_end,round(out_m[1:t_end,n_var+i_var])/1e3,type="l",
+#         col=c("black","blue","red")[3-i%%3],ylab="thousand")
+#     } else {
+#     lines(1:t_end,round(out_m[1:t_end,n_var+i_var])/1e3,type="l",col=c("black","blue","red")[3-i%%3])   }
+# }
 
 # age group totals
 bind_cols(lapply(list(1:6,7:12,13:15,16:18,1:18), function(x) rowSums(out_m[,x])),.name_repair="unique") %>%
-  rename(x1=`...1`,x2=`...2`,x3=`...3`,x4=`...4`,x5=`...5`) %>% mutate(t=1:nrow(out_m)) %>% pivot_longer(!t) %>%
+  rename(agegr1=`...1`,agegr2=`...2`,agegr3=`...3`,agegr4=`...4`,total=`...5`) %>% 
+  mutate(t=1:nrow(out_m)) %>% pivot_longer(!t) %>%
 ggplot() + geom_line(aes(x=t/365,y=value/1e3)) + facet_wrap(~name,scales="free_y") + ylab("thousands") +
   theme_bw() + standard_theme
-
-# recoveries
-# data.frame(df_recovs) %>% mutate(t=1:nrow(out_m)) %>% pivot_longer(!t) %>%
-#   ggplot() + geom_line(aes(x=t,y=value)) + facet_wrap(~name,scales = "free_y") + # ylab("thousands") +
-#   theme_bw() + standard_theme
-# # incident infections
-# t_end=5e2; data.frame(df_new_inf[1:t_end,c(3:4,9:10,14,17)]) %>% mutate(t=1:t_end) %>% pivot_longer(!t) %>%
-#   ggplot() + geom_line(aes(x=t,y=value)) + facet_wrap(~name,scales = "free_y") + # ylab("thousands") +
-#   scale_y_continuous(expand=expansion(0.01,0)) + theme_bw() + standard_theme
