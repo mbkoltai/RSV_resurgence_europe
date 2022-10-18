@@ -5,12 +5,101 @@ lapply(c("tidyverse","wpp2019","RcppRoll","lubridate","deSolve","tictoc","pracma
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 source("fcns.R"); sourceCpp("rcpp_files/diff_delay_eq.cpp")
 ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
-# tSIR toy model for UK <=2y RSV
-# attack rate ~70%
-# season: weeks w40 to w07
-# population: 1.475e6
+### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
+# DDE Rcpp model
 
-# ODE model
+params_dde=c("daily_births"=650e3/365,"gamma"=1/7,"beta_scale"=1/5,"I_init"=10,"imp_val"=10)
+par_perms=expand.grid(birthrate=c(round(700e3/365)),waning_shape=c(8,10,16,20),t_waning=c(200,350))
+k_gamma=4; waning_prob=dgamma(x=(1:round(2*par_perms$t_waning[k_gamma])),shape=par_perms$waning_shape[k_gamma],
+                   rate=par_perms$waning_shape[k_gamma]/par_perms$t_waning[k_gamma])
+waning_prob=waning_prob/sum(waning_prob); plot(waning_prob,cex=1/2)
+# source: 
+sourceCpp("rcpp_files/diff_delay_eq.cpp")
+# run
+agegr_pop_size=c(1.48,2.38,10.27,52.67)*1e6; pop_stat_sol=c(1295,1941,8395,55664)*1e3
+init_conds=unlist(sapply(1:4, function(x) sapply(c(pop_stat_sol[x]/c(2,2,1,1)[x]-10,10,0), 
+                                                 function(x_var) rep(x_var,c(2,2,1,1)[x])) ))
+I_age_table=data.frame(fcn_get_seq_inds(vec_inf_byage=c(2,2,1,1),n_age=4,comp_list=c("S","I","R"),sel_var="I"))
+# contact matrix
+# library('socialmixr')
+# contact matrix from covidm ("home","work","school","other")
+country_sel="United Kingdom"
+standard_age_groups <- fun_cntr_agestr(country_sel,i_year="2020",age_low_vals=seq(0,75,5),age_high_vals=c(seq(4,74,5),99))
+# RSV age groups (population data from wpp2019)
+rsv_age_groups <- fun_rsv_agegroups(standard_age_groups,popul_struct=fcn_cntr_fullpop(n_year="2020",country_sel),
+                                    rsv_age_groups_low=c(0,2,5,18), # c(0,0.5,1,1.5, 2,3,4, 5,15, 45, 65)
+                                    rsv_age_group_sizes=c(2,3,13,80)-1) # c(rep(0.4,4),rep(0.9,3), 9, 29, 19, 34)
+# if UK -> England's contact matrix
+C_m_polymod <- readRDS("data/UK_contact_matrix_sum.RDS")
+# create for our age groups
+C_m_merged_nonrecipr <- fun_create_red_C_m(C_m_full=C_m_polymod,rsv_agegroups=rsv_age_groups,
+                                           orig_age_groups_duration=standard_age_groups$duration,
+                                           orig_age_groups_sizes=standard_age_groups$values)
+# make it reciprocal for the larger group
+C_m <- fun_recipr_contmatr(C_m_merged_nonrecipr,age_group_sizes=rsv_age_groups$value)
+
+
+# run
+# init_conds=out_m[nrow(out_m),]
+tic();
+out_m=rcpp_age_struct_delay_eq(t_span=1:(30*365),contmatr=abs(randn(n=4,m=4)),
+                               pop_size=agegr_pop_size,agegr_dur=c(2,3,13,80)*365,
+                               susc_pars=c(rep(c(1/5,1/10),2),1/10,1/10)/20,init_vals=init_conds,
+                               vec_inf_byage=c(2,2,1,1),death_rates=c(2/1e3,0.2/1e3,0.15/1e3,11.6/1e3)/365,
+                               params=params_dde,waning_distr=waning_prob,comp_list=c("S","I","R"))
+toc(); 
+
+stat_agegr_pop_size=sapply(1:4, function(x) 
+  sum(init_conds[ifelse(x>1,cumsum(c(2,2,1,1)*3)[x-1]+1,1):(cumsum(c(2,2,1,1)*3))[x]]))
+
+# inf incidence
+data.frame(t=1:nrow(out_m),out_m) %>% pivot_longer(!t) %>% 
+  mutate(k_var=I_age_table$X2[as.numeric(gsub("X","",name))],
+         n_age=sapply(k_var, function(x) I_age_table$X1[I_age_table$X2 %in% x])+1,
+         n_inf=k_var-(3*sapply(n_age, function(x) sum(c(0,2,2,1,1)[1:x]))+c(2,2,1,1)[n_age])) %>% # filter(t<20*365) %>%
+  mutate(perc_value=100*value/stat_agegr_pop_size[n_age]) %>%
+ggplot() + geom_line(aes(x=t/365,y=value/1000,color=factor(n_inf))) + facet_wrap(~n_age,scales="free_y") + 
+  xlab("year") + ylab(c("infxs (1000)","% age group")[1]) + theme_bw() + standard_theme
+
+# plot infection prevalence
+data.frame(t=1:nrow(out_m),out_m[,I_age_table$X2]) %>% pivot_longer(!t) %>% 
+  mutate(k_var=I_age_table$X2[as.numeric(gsub("X","",name))],
+      n_age=sapply(k_var, function(x) I_age_table$X1[I_age_table$X2 %in% x])+1,
+      n_inf=k_var-(3*sapply(n_age, function(x) sum(c(0,2,2,1,1)[1:x]))+c(2,2,1,1)[n_age])) %>% # filter(t<20*365) %>%
+  mutate(perc_value=100*value/stat_agegr_pop_size[n_age]) %>%
+ggplot() + geom_line(aes(x=t/365,y=perc_value,color=factor(n_inf))) + facet_wrap(~n_age,scales="free_y") + 
+  xlab("year") + ylab(c("infxs (1000)","% age group")[2]) + theme_bw() + standard_theme
+
+# % susceptible
+S_age_table=data.frame(fcn_get_seq_inds(vec_inf_byage=c(2,2,1,1),n_age=4,comp_list=c("S","I","R"),sel_var="S"))
+data.frame(t=1:nrow(out_m),out_m[,S_age_table$X2]) %>% pivot_longer(!t) %>% 
+  mutate(k_var=S_age_table$X2[as.numeric(gsub("X","",name))],
+     n_age=sapply(k_var, function(x) S_age_table$X1[S_age_table$X2 %in% x])+1,
+     n_inf=k_var-(3*sapply(n_age, function(x) sum(c(0,2,2,1,1)[1:x])))) %>% filter(t<20*365) %>%
+  mutate(perc_value=100*value/stat_agegr_pop_size[n_age]) %>%
+ggplot() + geom_line(aes(x=t/365,y=perc_value,color=factor(n_inf))) + facet_wrap(~n_age,scales="free_y") + 
+  xlab("year") + ylab(c("infxs (1000)","% age group")[2]) + theme_bw() + standard_theme
+
+# multiple vars
+# t_end=1255; n_var=7
+# for (i in (1:6)){ 
+#   i_var=c(1,3,5,2,4,6)[i]-1
+#   if (i==1) {
+#     plot(1:t_end,round(out_m[1:t_end,n_var+i_var])/1e3,type="l",
+#         col=c("black","blue","red")[3-i%%3],ylab="thousand") } else {
+#     lines(1:t_end,round(out_m[1:t_end,n_var+i_var])/1e3,type="l",col=c("black","blue","red")[3-i%%3]) }
+# }
+
+# age group totals
+bind_cols(lapply(list(1:6,7:12,13:15,16:18,1:18), function(x) rowSums(out_m[,x])),.name_repair="unique") %>%
+  rename(agegr1=`...1`,agegr2=`...2`,agegr3=`...3`,agegr4=`...4`,total=`...5`) %>% 
+  mutate(t=1:nrow(out_m)) %>% pivot_longer(!t) %>%
+ggplot() + geom_line(aes(x=t/365,y=value/1e3)) + facet_wrap(~name,scales="free_y") + ylab("thousands") +
+  theme_bw() + standard_theme
+
+### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
+### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
+# ODE model (1 pop group)
 
 # params
 n_years=30
@@ -83,7 +172,7 @@ out_ode %>% filter(date>as.Date(paste0(year(max(out_ode$date))-2,"-06-01")) &
 ggsave("output/ode_ARs_forcing_waning_effect.png",width=33,height=22,units="cm")
 
 ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### 
-# delay difference equation with delay distribution for waning immunity
+# 1-variable delay difference equation with delay distribution for waning immunity
 
 # length of simulation
 n_years=30
@@ -182,9 +271,7 @@ bind_rows(out_delay %>% select(time,new_inf,t_waning,gamma_shape_par) %>%
 # save
 ggsave("output/ode_dde_comparison.png",width=28,height=22,units="cm")
 
-### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
-# rcpp
-sourceCpp("rcpp_files/diff_delay_eq.cpp")
+# rcpp # sourceCpp("rcpp_files/diff_delay_eq.cpp")
 # 2-3ms/year of simul
 tic(); xx <- rcpp_delay_eq(t_span=(length(waning_prob)+1):(n_years*365),
                            params=params_dde,I_init=10,imp_val=10,waning_distr=waning_prob); toc()
@@ -222,10 +309,10 @@ peaks_by_par = left_join(out_delay %>% filter(time>max(time)*4/5) %>%
 init_t_cutoff=20*365
 df_periods <- bind_rows(
   lapply(1:nrow(par_perms), function(x) data.frame(p=x,
-      t_peak=(data.frame(
-        findpeaks(out_delay$new_inf[out_delay$gamma_shape_par %in% par_perms$waning_shape[x] & 
-          out_delay$time>init_t_cutoff & (out_delay$t_waning %in% par_perms$t_waning[x])],
-              minpeakheight=peaks_by_par$peak_new_inf[x]*0.9))  ) ) )) %>% 
+                              t_peak=(data.frame(
+                                findpeaks(out_delay$new_inf[out_delay$gamma_shape_par %in% par_perms$waning_shape[x] & 
+                                out_delay$time>init_t_cutoff & (out_delay$t_waning %in% par_perms$t_waning[x])],
+                                minpeakheight=peaks_by_par$peak_new_inf[x]*0.9))  ) ) )) %>% 
   select(c(p,t_peak.X1,t_peak.X2)) %>% 
   rename(t_peak=t_peak.X2,peak_value=t_peak.X1) %>% relocate(t_peak,.before=peak_value) %>%
   group_by(p) %>% mutate(t_peak=t_peak+init_t_cutoff,t_interpk=t_peak-lag(t_peak)) %>% 
@@ -237,7 +324,7 @@ df_periods <- bind_rows(
 
 # plot peak distrib
 df_periods %>% 
-ggplot() + geom_jitter(aes(x=param,y=t_interpk,color=factor(p),size=peak_value),alpha=1/2) + 
+  ggplot() + geom_jitter(aes(x=param,y=t_interpk,color=factor(p),size=peak_value),alpha=1/2) + 
   theme_bw() + standard_theme + theme(axis.text.x = element_text(angle=0)) + xlab("") + labs(color="")
 # save
 ggsave(paste0("delay_eq_noforcing_period_length.png"),width=28,height=20,units="cm")
@@ -269,68 +356,3 @@ left_join(df_troughs,df_periods %>% select(p,param) %>% distinct()) %>%
   xlab("") + ylab("attack rate (%)") + labs(color="") + guides(color="none")
 # save
 ggsave(paste0("output/delay_eq_noforcing_AR_period_length.png"),width=25,height=18,units="cm")
-
-### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
-# DDE Rcpp model
-
-params_dde=c("daily_births"=650e3/365,"gamma"=1/7,"beta_scale"=1/5,"I_init"=10,"imp_val"=10)
-par_perms=expand.grid(birthrate=c(round(700e3/365)),waning_shape=c(8,10,16,20),t_waning=c(200,350))
-waning_prob=dgamma(x=(1:round(2*par_perms$t_waning[2])),shape=par_perms$waning_shape[1],
-                   rate=par_perms$waning_shape[1]/par_perms$t_waning[1])
-waning_prob=waning_prob/sum(waning_prob)
-# source: 
-sourceCpp("rcpp_files/diff_delay_eq.cpp")
-# run
-agegr_pop_size=c(1.48,2.38,10.27,52.67)*1e6; pop_stat_sol=c(1295,1941,8395,55664)*1e3
-init_conds=unlist(sapply(1:4, function(x) sapply(c(pop_stat_sol[x]/c(2,2,1,1)[x]-10,10,0), 
-                                                 function(x_var) rep(x_var,c(2,2,1,1)[x])) ))
-I_age_table=data.frame(fcn_get_seq_inds(vec_inf_byage=c(2,2,1,1),n_age=4,comp_list=c("S","I","R"),sel_var="I"))
-
-# run
-# init_conds=out_m[nrow(out_m),]
-tic();
-out_m=rcpp_age_struct_delay_eq(t_span=1:(30*365),contmatr=abs(randn(n=4,m=4)),
-                               pop_size=agegr_pop_size,agegr_dur=c(2,3,13,80)*365,
-                               susc_pars=c(rep(c(1/5,1/10),2),1/10,1/10)/20,init_vals=init_conds,
-                               vec_inf_byage=c(2,2,1,1),death_rates=c(2/1e3,0.2/1e3,0.15/1e3,11.6/1e3)/365,
-                               params=params_dde,waning_distr=waning_prob,comp_list=c("S","I","R"))
-toc(); 
-
-stat_agegr_pop_size=sapply(1:4, function(x) 
-  sum(init_conds[ifelse(x>1,cumsum(c(2,2,1,1)*3)[x-1]+1,1):(cumsum(c(2,2,1,1)*3))[x]]))
-# plot infection prevalence
-data.frame(t=1:nrow(out_m),out_m[,I_age_table$X2]) %>% pivot_longer(!t) %>% 
-  mutate(k_var=I_age_table$X2[as.numeric(gsub("X","",name))],
-      n_age=sapply(k_var, function(x) I_age_table$X1[I_age_table$X2 %in% x])+1,
-      n_inf=k_var-(3*sapply(n_age, function(x) sum(c(0,2,2,1,1)[1:x]))+c(2,2,1,1)[n_age])) %>% filter(t<20*365) %>%
-  mutate(perc_value=100*value/stat_agegr_pop_size[n_age]) %>%
-ggplot() + geom_line(aes(x=t/365,y=perc_value,color=factor(n_inf))) + facet_wrap(~n_age,scales="free_y") + 
-  xlab("year") + ylab(c("infxs (1000)","% age group")[2]) + theme_bw() + standard_theme
-
-# % susceptible
-S_age_table=data.frame(fcn_get_seq_inds(vec_inf_byage=c(2,2,1,1),n_age=4,comp_list=c("S","I","R"),sel_var="S"))
-data.frame(t=1:nrow(out_m),out_m[,S_age_table$X2]) %>% pivot_longer(!t) %>% 
-  mutate(k_var=S_age_table$X2[as.numeric(gsub("X","",name))],
-     n_age=sapply(k_var, function(x) S_age_table$X1[S_age_table$X2 %in% x])+1,
-     n_inf=k_var-(3*sapply(n_age, function(x) sum(c(0,2,2,1,1)[1:x])))) %>% filter(t<20*365) %>%
-  mutate(perc_value=100*value/stat_agegr_pop_size[n_age]) %>%
-ggplot() + geom_line(aes(x=t/365,y=perc_value,color=factor(n_inf))) + facet_wrap(~n_age,scales="free_y") + 
-  xlab("year") + ylab(c("infxs (1000)","% age group")[2]) + theme_bw() + standard_theme
-
-# multiple vars
-# t_end=1255; n_var=7
-# for (i in (1:6)){ 
-#   i_var=c(1,3,5,2,4,6)[i]-1
-#   if (i==1) {
-#     plot(1:t_end,round(out_m[1:t_end,n_var+i_var])/1e3,type="l",
-#         col=c("black","blue","red")[3-i%%3],ylab="thousand")
-#     } else {
-#     lines(1:t_end,round(out_m[1:t_end,n_var+i_var])/1e3,type="l",col=c("black","blue","red")[3-i%%3])   }
-# }
-
-# age group totals
-bind_cols(lapply(list(1:6,7:12,13:15,16:18,1:18), function(x) rowSums(out_m[,x])),.name_repair="unique") %>%
-  rename(agegr1=`...1`,agegr2=`...2`,agegr3=`...3`,agegr4=`...4`,total=`...5`) %>% 
-  mutate(t=1:nrow(out_m)) %>% pivot_longer(!t) %>%
-ggplot() + geom_line(aes(x=t/365,y=value/1e3)) + facet_wrap(~name,scales="free_y") + ylab("thousands") +
-  theme_bw() + standard_theme

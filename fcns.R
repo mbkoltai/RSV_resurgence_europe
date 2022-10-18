@@ -96,3 +96,130 @@ sir_rsv <- function(t, y, parms) {
   dR = gamma*I - (aging_rate+death_rate+waning_rate)*R # res = c(dS, dE, dI, dR)
   list(c(dS, dI, dR, new_inf)) 
 }
+
+# create reduced contact matrix --------------
+fun_create_red_C_m=function(C_m_full,rsv_agegroups,orig_age_groups_duration,orig_age_groups_sizes){
+  C_m=matrix(0,nrow=nrow(rsv_agegroups),ncol=nrow(rsv_agegroups)); rownames(C_m)=rsv_agegroups$agegroup_name
+  colnames(C_m)=rsv_agegroups$agegroup_name
+  n_age=nrow(rsv_agegroups)
+  for (i_row in 1:n_age){
+    for (j_col in 1:n_age){
+      # we are merging or splitting age groups, there are 3 possibilities for a new age group:
+      # same OR smaller than (ST) OR larger than (LT) the original
+      # (it is an *average* of contacts per person, and we have no resolution within age bands)
+      #
+      # if the 'i' group (C[i,j]) is the *same* as original or *smaller*, this (in itself) does not change the contact rate
+      if (rsv_agegroups$wpp_agegroup_low[i_row]==rsv_agegroups$wpp_agegroup_high[i_row]) {
+        # 'j' group same or smaller as original
+        if (rsv_agegroups$wpp_agegroup_low[j_col]==rsv_agegroups$wpp_agegroup_high[j_col]) {
+          f_dur=rsv_agegroups$duration[j_col]/orig_age_groups_duration[rsv_agegroups$wpp_agegroup_high[j_col]]
+          C_m[i_row,j_col]=(C_m_full[rsv_agegroups$wpp_agegroup_low[i_row],rsv_agegroups$wpp_agegroup_low[j_col]])*f_dur
+        } else { # if 'j' is larger than original group
+          group_span=rsv_agegroups$wpp_agegroup_low[j_col]:rsv_agegroups$wpp_agegroup_high[j_col]
+          agegroup_weights=orig_age_groups_sizes[group_span]/sum(orig_age_groups_sizes[group_span])
+          C_m[i_row,j_col]=sum(agegroup_weights*C_m_full[i_row,group_span])
+        } # end of 'i' smaller or same as original
+      } else { # if 'i' in C[i,j] is a bigger age band -> weighted average of the contact rates of constituent groups
+        group_span=rsv_agegroups$wpp_agegroup_low[i_row]:rsv_agegroups$wpp_agegroup_high[i_row]
+        agegroup_weights=orig_age_groups_sizes[group_span]/sum(orig_age_groups_sizes[group_span])
+        # if 'j' is same/smaller -> contact rate with original group proportionally divided
+        if (rsv_agegroups$wpp_agegroup_low[j_col]==rsv_agegroups$wpp_agegroup_high[j_col]) {
+          f_dur=rsv_agegroups$duration[j_col]/orig_age_groups_duration[rsv_agegroups$wpp_agegroup_high[j_col]]
+          C_m[i_row,j_col]=
+            sum((orig_age_groups_sizes[group_span]/sum(orig_age_groups_sizes[group_span]))*C_m_full[group_span,j_col])*f_dur
+        } else {# if 'j' larger -> weighted average of the contact rates of the constituent groups
+          # print(c(i_row,j_col)); print(agegroup_weights); print(group_span)
+          C_m[i_row,j_col]=sum(rep(agegroup_weights,length(agegroup_weights))*unlist(
+            lapply(group_span,function(x) {agegroup_weights*C_m_full[x,group_span]})))
+        }
+      }
+      # C_m[i_row,j_col]=mean(C_m_full[rsv_agegroups$wpp_agegroup_low[i_row]:rsv_agegroups$wpp_agegroup_high[i_row],
+      #                                rsv_agegroups$wpp_agegroup_low[j_col]:rsv_agegroups$wpp_agegroup_high[j_col]])   
+    } }
+  C_m }
+
+
+# funcn create reciprocal matrix  --------------
+fun_recipr_contmatr<-function(C_m_full,age_group_sizes){
+  all_perms=expand.grid(1:nrow(C_m_full),1:nrow(C_m_full)) # permutations(n=nrow(C_m_full),r=2,repeats.allowed=T); 
+  N_tot=sum(age_group_sizes)
+  C_m_full_symm=matrix(0,nrow=nrow(C_m_full),ncol=nrow(C_m_full))
+  for (k in 1:nrow(all_perms)) { 
+    i=all_perms[k,1]; j=all_perms[k,2]
+    C_m_full_symm[i,j]=(C_m_full[i,j] + C_m_full[j,i]*(age_group_sizes[j]/age_group_sizes[i]))/2
+  }
+  colnames(C_m_full_symm)=colnames(C_m_full); rownames(C_m_full_symm)=rownames(C_m_full) 
+  C_m_full_symm
+}
+
+
+# age structure of country ----------------------------------------------------------
+fun_cntr_agestr <- function(i_cntr,i_year,age_low_vals,age_high_vals){
+  age_groups=data.frame(age_low=seq(0,75,5), age_high=c(seq(4,74,5),100))
+  if (!any((.packages()) %in% "wpp2019")) {library(wpp2019)}; if (!exists("popF")) {data("pop")}
+  cntr_agestr=data.frame(agegroups=popF[popF$name %in% i_cntr,"age"],values=popF[popF$name %in% i_cntr,i_year] +
+                           popM[popM$name %in% i_cntr,i_year])
+  agegr_truthvals=sapply(strsplit(as.character(cntr_agestr$agegroups),"-"),"[[",1) %in% age_groups$age_low
+  N_tot=cntr_agestr$values[agegr_truthvals]
+  N_tot[length(N_tot)]=N_tot[length(N_tot)]+sum(cntr_agestr$values[!agegr_truthvals])
+  N_tot=N_tot*1e3; # N_tot
+  data.frame(age_low=age_low_vals, age_high=age_high_vals,values=N_tot, duration=(age_high_vals-age_low_vals)+1) %>%
+    mutate(proportion=values/sum(values))
+}
+
+
+### country full popul struct ----------------------------------------------------------
+fcn_cntr_fullpop <- function(n_year,country_sel){
+  uk_popul=left_join(subset(popF,name %in% country_sel)[,c("age",n_year)],
+                     subset(popM,name %in% country_sel)[,c("age",n_year)],by="age",suffix=c("F","M"))
+  uk_popul[,"totalpop"]=uk_popul[,2]+uk_popul[,3]
+  uk_popul=uk_popul %>% mutate(lower=as.numeric(gsub("-\\d+","",age)),upper=as.numeric(gsub("\\d+-","",age))+0.9)
+  if (any(is.na(uk_popul$lower))){
+    uk_popul[grepl("95",uk_popul$age),c(paste0(n_year,"F"),paste0(n_year,"M"),"totalpop")]=
+      (uk_popul[grepl("95",uk_popul$age),c(paste0(n_year,"F"),paste0(n_year,"M"),"totalpop")]+
+         uk_popul[uk_popul$age=="100+",c(paste0(n_year,"F"),paste0(n_year,"M"),"totalpop")])
+    uk_popul=uk_popul[-which(uk_popul$age=="100+"),] %>% 
+      mutate(mean_age=(lower+upper+0.1)/2,fraction_pop=totalpop/sum(totalpop)) }
+  uk_popul
+}
+
+
+### fcn RSV age groups ----------------------------------------------------------
+fun_rsv_agegroups<-function(standard_age_groups,popul_struct,rsv_age_groups_low,rsv_age_group_sizes){
+  
+  rsv_age_groups=data.frame(age_low=rsv_age_groups_low,age_high=rsv_age_groups_low+rsv_age_group_sizes)
+  
+  truthvals=which(match(rsv_age_groups$age_low,standard_age_groups$age_low)==
+                    match(rsv_age_groups$age_high,standard_age_groups$age_high))
+  rsv_age_groups[,c("wpp_agegroup_low","wpp_agegroup_high")]=NA
+  rsv_age_groups[,c("wpp_agegroup_low","wpp_agegroup_high")]=data.frame(t(sapply(1:length(rsv_age_groups_low), function(x) 
+  {c(max(which(rsv_age_groups_low[x]>=standard_age_groups$age_low)),
+     max(which(rsv_age_groups_low[x]+rsv_age_group_sizes[x]>=standard_age_groups$age_low)))})))
+  
+  agelim_diffs=rsv_age_groups$age_high-rsv_age_groups$age_low; agelim_diffs_increm=rep(NA,length(agelim_diffs))
+  agelim_diffs_increm[agelim_diffs %% 1==0]=1; agelim_diffs_increm[agelim_diffs %% 1>0]=0.1 
+  rsv_age_groups[,"duration"]=(rsv_age_groups$age_high-rsv_age_groups$age_low) + agelim_diffs_increm
+  scaling_fact=rsv_age_groups$duration/sapply(1:nrow(rsv_age_groups),function(x) {
+    sum(standard_age_groups$duration[rsv_age_groups$wpp_agegroup_low[x]:rsv_age_groups$wpp_agegroup_high[x]])})
+  popul_custom_agegroups=sapply(1:nrow(rsv_age_groups),function(x) {sum(standard_age_groups$values[
+    rsv_age_groups$wpp_agegroup_low[x]:rsv_age_groups$wpp_agegroup_high[x]])}); rsv_age_groups[,"value"]=NA
+  rsv_age_groups$value=popul_custom_agegroups*scaling_fact; rsv_age_groups[,"fraction"]=
+    round(rsv_age_groups$value/sum(rsv_age_groups$value),4)
+  rsv_age_groups[,"agegroup_name"]=paste(rsv_age_groups$age_low,rsv_age_groups$age_low+rsv_age_groups$duration,sep='-'); 
+  rsv_age_groups
+  
+  agegroup_match=data.frame(model_agegroup=1:nrow(rsv_age_groups),
+                            age_low=rsv_age_groups$age_low,age_high=rsv_age_groups$age_high,
+                            wpp_agegroup_low=unlist(lapply(rsv_age_groups$age_low,
+                                      function(x){which(x>=popul_struct$lower & x<=popul_struct$upper)})),
+                            wpp_agegroup_high=unlist(lapply(rsv_age_groups$age_high,
+                                      function(x){which(x>=popul_struct$lower & x<=popul_struct$upper)}))) %>%
+    mutate(age_high=ifelse(model_agegroup<max(model_agegroup),age_low[model_agegroup+1],age_high),
+           mean_age_arithm=(age_low+age_high)/2, mean_age_weighted=sapply(1:max(model_agegroup),function(x) {
+             sum((popul_struct$totalpop[wpp_agegroup_low[x]:wpp_agegroup_high[x]]*
+                    popul_struct$mean_age[wpp_agegroup_low[x]:wpp_agegroup_high[x]])/
+                   sum(popul_struct$totalpop[wpp_agegroup_low[x]:wpp_agegroup_high[x]]))})) %>%
+    mutate(mean_age_weighted=ifelse(wpp_agegroup_low==wpp_agegroup_high,mean_age_arithm,mean_age_weighted)) %>% 
+    select(-mean_age_arithm)
+  rsv_age_groups %>% mutate(mean_age_weighted=agegroup_match$mean_age_weighted)
+}

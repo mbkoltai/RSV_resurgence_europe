@@ -251,8 +251,7 @@ arma::mat rcpp_age_struct_delay_eq(arma::vec t_span, arma::mat contmatr,
   float daily_births = as<float>(params["daily_births"]);
   float beta_scale = as<float>(params["beta_scale"]); float gamma = as<float>(params["gamma"]);
   float imp_val = as<float>(params["imp_val"]); // float I_init = as<float>(params["I_init"]);
-  int l_wane = waning_distr.size(); int t_n = t_span.size(); 
-  int n_age=pop_size.size();
+  int l_wane = waning_distr.size(); int t_n = t_span.size(); int n_age=pop_size.size();
   // build infection vector
   arma::mat susc_pars_matr=arma::mat(sum(vec_inf_byage),sum(vec_inf_byage),arma::fill::zeros); 
   for (int k=0;k<susc_pars_matr.n_rows;k++) {susc_pars_matr(k,k)=susc_pars[k];}
@@ -284,9 +283,10 @@ arma::mat rcpp_age_struct_delay_eq(arma::vec t_span, arma::mat contmatr,
   // matrix for recovery process (R->S)
   arma::mat matr_recov(n_var,n_var); matr_recov=fcn_recov_matrix(n_var,n_age,vec_inf_byage,comp_list);
   // create output matrix
-  arma::mat x_out(t_span.size(),n_var);
+  arma::mat x_out(t_span.size(),n_var); // +inf_ind_uvec.size()
+  arma::mat out_incid_inf(t_span.size(),inf_ind_uvec.size());
   arma::mat new_inf_matr=x_out; 
-  x_out.row(0)=init_vals.t(); arma::uvec i_t_uvec(1);
+  x_out.row(0)=init_vals.t();
   arma::vec new_inf_ext(n_var); arma::vec lambda_vect(inf_ind_uvec.n_rows);
   arma::vec new_recov_vect(n_var); arma::vec aging_death_vect(n_var); 
   arma::vec waning_vect(n_var); 
@@ -301,7 +301,7 @@ for (int i_t=1;i_t<t_span.size();i_t++) {
     inf_vect_val=fcn_matr_subset(inf_inds,x_out.row(i_t-1).t(),arma::linspace(0,n_age-1,n_age))/pop_size;
     lambda_vect=susc_pars_matr*cont_matr_adj*inf_vect_val;
     for (int k_diag=0;k_diag<inf_ind_uvec.n_rows;k_diag++) {
-      susc_vars(k_diag,k_diag)=x_out(i_t-1,susc_inds_uvec[k_diag]);}
+      susc_vars(k_diag,k_diag)=x_out(i_t-1,susc_inds_uvec[k_diag]); }
     // I variables
     new_inf_ext.elem(inf_ind_uvec) = susc_vars*lambda_vect;
     // S variables
@@ -330,9 +330,10 @@ for (int i_t=1;i_t<t_span.size();i_t++) {
     // add up vectors to get change in variables
     x_out.row(i_t)=x_out.row(i_t-1) + new_inf_ext.t() + new_recov_vect.t() + 
       aging_death_vect.t() + birth_vector.t() + waning_vect.t();
+    out_incid_inf.row(i_t)=new_inf_ext.elem(inf_ind_uvec).t();
     
   }
-  return x_out; // new_inf_matr
+  return out_incid_inf; // x_out
 }
 
 // rcpp_age_struct_delay_eq(t_span=1:1e3,contmatr=randn(n=4,m=4),pop_size=c(1.48,2.38,10.27,52.67),
