@@ -1,5 +1,6 @@
 # gitignore
 .Rhistory
+sandbox.R
 # ABC/
 background/
 data/

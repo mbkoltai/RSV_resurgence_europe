@@ -347,6 +347,12 @@ String fcn_print_test(int n_end){
   return "";
 }
 
+// [[Rcpp::export]]
+String fcn_strcmp_test(String str_inp1, String str_inp2){
+if (str_inp1==str_inp2) {String out="yes!"; return out;} else {
+  String out="no!"; return out;}
+}
+
 // arma::vec fcn_build_waning_vect(int i_t,int l_wane,int n_recov, 
 //                                 arma::vec agegr_dur, arma::vec age_ind_seq_var_ind, arma::vec waning_distr,
 //                                 arma::mat new_recov_hist){
