@@ -353,21 +353,40 @@ if (str_inp1==str_inp2) {String out="yes!"; return out;} else {
   String out="no!"; return out;}
 }
 
-// arma::vec fcn_build_waning_vect(int i_t,int l_wane,int n_recov, 
-//                                 arma::vec agegr_dur, arma::vec age_ind_seq_var_ind, arma::vec waning_distr,
-//                                 arma::mat new_recov_hist){
-// int t_waning_start=i_t-l_wane; if (t_waning_start<0) {t_waning_start=0;}
-// arma::vec waning_vect(i_t-t_waning_start);
-// arma::uvec uvec_inds(i_t-t_waning_start); float age_rate;
-// uvec_inds=linspace<uvec>(1,i_t-t_waning_start,i_t-t_waning_start)-1; 
-// arma::mat exp_vect(uvec_inds.size(),1);
-// // arma::mat waning_hist(l_wane,n_recov);
-// arma::vec waning_sum(n_recov);
-// for (int k_col=0;k_col<n_recov;k_col++) {
-//   age_rate=agegr_dur[age_ind_seq_var_ind[k_col]];
-//   exp_vect.col(0)=exp(-age_rate*linspace(1,i_t-t_waning_start,i_t-t_waning_start));
-//   waning_sum(k_col)=sum(
-//     reverse(new_recov_hist(span(t_waning_start,i_t-1),k_col)) % exp_vect % waning_distr.elem(uvec_inds));
-// }
-// return waning_sum;
-// }
+// [[Rcpp::depends(RcppArmadillo)]]
+// [[Rcpp::export]]
+arma::uvec fcn_waning_susc_comps(int n_age,arma::vec vec_inf_byage,
+                                 StringVector comp_list){
+  int vector_size=0; int incr=0;
+  for (int i_vs=0;i_vs<n_age;i_vs++) {
+    if (vec_inf_byage[i_vs]>1) {incr=vec_inf_byage[i_vs]-1;} else {incr=1;}
+    vector_size+=incr; // Rprintf("\nincr: %i",vector_size);
+    }
+  arma::uvec waning_susc_inds_uvec(vector_size); int n_cnt=0;
+for (int i_age=0;i_age<n_age;i_age++) {
+  if (vec_inf_byage[i_age]>1) {
+    for (int i_inf=2;i_inf<vec_inf_byage[i_age]+1;i_inf++) {
+      n_cnt=n_cnt+1;
+    // fcn_ind_seq(k_age=1,k_comp="S",k_inf=1,n_age=4,n_comp =c("S","I","R"),v_inf=c(2,2,1,1))
+    waning_susc_inds_uvec(n_cnt-1)=fcn_ind_seq(i_age+1,"S",i_inf,n_age,comp_list,vec_inf_byage)-1;
+    // Rprintf("\ni_age: %i",i_age);Rprintf(", i_age: %i",i_inf);Rprintf(", a: %i",waning_susc_inds_uvec(n_cnt-1)); 
+    } // loop infect levels
+  } else {
+    n_cnt=n_cnt+1; int i_inf=1;
+    waning_susc_inds_uvec(n_cnt-1)=fcn_ind_seq(i_age+1,"S",1,n_age,comp_list,vec_inf_byage)-1;
+    }
+} // loop  through age groups
+
+return waning_susc_inds_uvec;
+}
+
+// [[Rcpp::depends(RcppArmadillo)]]
+// [[Rcpp::export]]
+int fcn_waning_S_comp_size(int n_age,arma::vec vec_inf_byage){
+  int vector_size=0; int incr=0;
+  for (int i_vs=0;i_vs<n_age;i_vs++) {
+    if (vec_inf_byage[i_vs]>1) {incr=vec_inf_byage[i_vs]-1;} else {incr=1;}
+    vector_size+=incr; // Rprintf("\nincr: %i",vector_size);
+  }
+  return vector_size;
+}

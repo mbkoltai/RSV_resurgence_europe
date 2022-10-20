@@ -88,7 +88,7 @@ int fcn_ind_seq(int k_age, String k_comp, int k_inf,
 // fcn duplicates rows of contact matrix according to the input 'inf_ind' (inf levels per age groups)
 // [[Rcpp::depends(RcppArmadillo)]]
 // [[Rcpp::export]]
-arma::mat fcn_matr_ind(arma::mat matr,arma::vec inf_ind) { // IntegerVector
+arma::mat fcn_stretch_cont_matr(arma::mat matr,arma::vec inf_ind) { // IntegerVector
   IntegerVector inds(sum(inf_ind)); int loop_size=inf_ind.size();
   arma::vec start_vals(inf_ind.size()); arma::vec end_vals(inf_ind.size());
   arma::vec out_vals(sum(inf_ind)); arma::mat out_matr(sum(inf_ind),inf_ind.size());
@@ -240,6 +240,47 @@ arma::vec fcn_build_waning_vect(int i_t,int l_wane,int n_recov,
   return waning_sum;
 }
 
+// index of S compartment into which there is waning
+// [[Rcpp::depends(RcppArmadillo)]]
+// [[Rcpp::export]]
+arma::uvec fcn_waning_susc_comps(int n_age,arma::vec vec_inf_byage,
+                                 StringVector comp_list){
+  int vector_size=0; int incr=0;
+  for (int i_vs=0;i_vs<n_age;i_vs++) {
+    if (vec_inf_byage[i_vs]>1) {incr=vec_inf_byage[i_vs]-1;} else {incr=1;}
+    vector_size+=incr; // Rprintf("\nincr: %i",vector_size);
+  }
+  arma::uvec waning_susc_inds_uvec(vector_size); int n_cnt=0;
+  for (int i_age=0;i_age<n_age;i_age++) {
+    if (vec_inf_byage[i_age]>1) {
+      for (int i_inf=2;i_inf<vec_inf_byage[i_age]+1;i_inf++) {
+        n_cnt=n_cnt+1;
+        // fcn_ind_seq(k_age=1,k_comp="S",k_inf=1,n_age=4,n_comp =c("S","I","R"),v_inf=c(2,2,1,1))
+        waning_susc_inds_uvec(n_cnt-1)=fcn_ind_seq(i_age+1,"S",i_inf,n_age,comp_list,vec_inf_byage)-1;
+        // Rprintf("\ni_age: %i",i_age);Rprintf(", i_age: %i",i_inf);
+        // Rprintf(", a: %i",waning_susc_inds_uvec(n_cnt-1)); 
+      } // loop infect levels
+    } else {
+      n_cnt=n_cnt+1; int i_inf=1;
+      waning_susc_inds_uvec(n_cnt-1)=fcn_ind_seq(i_age+1,"S",1,n_age,comp_list,vec_inf_byage)-1;
+    }
+  } // loop  through age groups
+  
+  return waning_susc_inds_uvec;
+}
+
+// number of S compartment into which there is waning
+// [[Rcpp::depends(RcppArmadillo)]]
+// [[Rcpp::export]]
+int fcn_waning_S_comp_size(int n_age,arma::vec vec_inf_byage){
+  int vector_size=0; int incr=0;
+  for (int i_vs=0;i_vs<n_age;i_vs++) {
+    if (vec_inf_byage[i_vs]>1) {incr=vec_inf_byage[i_vs]-1;} else {incr=1;}
+    vector_size+=incr; // Rprintf("\nincr: %i",vector_size);
+  }
+  return vector_size;
+}
+
 // // // // // // // // // // // // // // // // // // // // // // // // // // // // 
 // age-structure SIRS model with memory for waning
 // [[Rcpp::depends(RcppArmadillo)]]
@@ -257,7 +298,7 @@ arma::mat rcpp_age_struct_delay_eq(arma::vec t_span, arma::mat contmatr,
   // build infection vector
   arma::mat susc_pars_matr=arma::mat(sum(vec_inf_byage),sum(vec_inf_byage),arma::fill::zeros); 
   for (int k=0;k<susc_pars_matr.n_rows;k++) {susc_pars_matr(k,k)=susc_pars[k];}
-  arma::mat cont_matr_adj = fcn_matr_ind(contmatr,vec_inf_byage);
+  arma::mat cont_matr_adj = fcn_stretch_cont_matr(contmatr,vec_inf_byage);
   // matrix product: suscept*contact matrix(adjusted)
   // age group indices by variable index (eg there are 6 I variables, they belong to age groups: c(1,1,2,2,3,4))
   arma::vec age_ind_seq_var_ind=fcn_age_ind_seq_var_ind(vec_inf_byage,n_age); 
@@ -276,6 +317,9 @@ arma::mat rcpp_age_struct_delay_eq(arma::vec t_span, arma::mat contmatr,
   for (int i=0;i<inf_ind_uvec.size();i++) {
     inf_ind_uvec(i)=inf_inds(i,1)-1; susc_inds_uvec(i)=susc_inds(i,1)-1; recov_inds_uvec(i)=recov_inds(i,1)-1;
     }
+  // indices of S compartms that have incoming waning terms
+  arma::uvec waning_susc_inds_uvec(fcn_waning_S_comp_size(n_age,vec_inf_byage));
+  waning_susc_inds_uvec=fcn_waning_susc_comps(n_age,vec_inf_byage,comp_list);
   arma::vec inf_vect_val(n_age);
   // vector of transitions btwn compartms due to aging & death
   arma::mat matr_aging_death_coeffs(n_var,n_var);
@@ -300,6 +344,7 @@ arma::mat rcpp_age_struct_delay_eq(arma::vec t_span, arma::mat contmatr,
   arma::vec birth_vector(n_var); birth_vector(0)=daily_births; // int l_wane=l_wane*2;
   arma::mat new_recov_hist(l_wane,sum(vec_inf_byage));
   arma::vec waning_terms(n_var_per_type);
+  arma::vec waning_terms_aggr(n_age);
   // // // // // // // // // // // // // // // // // // // // // // // // 
   // LOOP forward in TIME
 for (int i_t=1;i_t<t_span.size();i_t++) {
@@ -332,8 +377,11 @@ for (int i_t=1;i_t<t_span.size();i_t++) {
     waning_terms=fcn_build_waning_vect(i_t, l_wane, n_var_per_type, agegr_dur,
                            age_ind_seq_var_ind,waning_distr,new_recov_hist);
     // int matr_size=new_recov_hist.n_rows; Rprintf("\n t: %i",i_t); Rprintf(", matr_size: %i",matr_size);
-    waning_vect.elem(susc_inds_uvec)=waning_terms;
+    // waning OUTgoing terms (R->)
     waning_vect.elem(recov_inds_uvec)=-waning_terms;
+    waning_terms_aggr=fcn_matr_subset(recov_inds,-waning_vect,arma::linspace(0,n_age-1,n_age));
+    // waning terms INcoming (->S)
+    waning_vect.elem(waning_susc_inds_uvec)=waning_terms_aggr;
     // // importation
     // div_t divresult; divresult=std::div(i_t,30); if (divresult.rem==0) {t_imp=imp_val;} else {t_imp=0;};
     // // if (k_t %% 30==0) {import_inf=10} else {import_inf=0}
