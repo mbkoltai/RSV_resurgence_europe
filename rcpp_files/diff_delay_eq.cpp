@@ -219,7 +219,6 @@ arma::vec fcn_age_ind_seq_var_ind(arma::vec vec_inf_byage,int n_age){
   return age_ind_seq_var_ind;
 }
 
-
 // build waning terms
 // [[Rcpp::depends(RcppArmadillo)]]
 // [[Rcpp::export]]
@@ -229,15 +228,15 @@ arma::vec fcn_build_waning_vect(int i_t,int l_wane,int n_recov,
   
   int t_waning_start=i_t-l_wane; if (t_waning_start<0) {t_waning_start=0;}; float age_rate;
   arma::vec waning_vect(i_t-t_waning_start); arma::uvec uvec_inds(i_t-t_waning_start); 
-  // Rprintf("t_waning_start: %i",t_waning_start); Rprintf("\ni_t: %i",i_t);
-  uvec_inds=linspace<uvec>(0,(i_t-1)-t_waning_start,i_t-t_waning_start); 
+  uvec_inds=linspace<uvec>(0,l_wane-1,l_wane); 
   arma::mat exp_vect(uvec_inds.size(),1); // Rprintf("\n exp_vect size: %i",exp_vect.n_rows);
   arma::vec waning_sum(n_recov);
   for (int k_col=0;k_col<n_recov;k_col++) {
     age_rate=1/agegr_dur[age_ind_seq_var_ind[k_col]];
-    exp_vect.col(0)=exp(-age_rate*linspace(1,i_t-t_waning_start,i_t-t_waning_start));
+    exp_vect.col(0)=exp(-age_rate*linspace(1,l_wane,l_wane));
     waning_sum(k_col)=sum(
-      reverse(recov_hist(span(0,(i_t-1)-t_waning_start),k_col)) % exp_vect % waning_distr.elem(uvec_inds));
+      reverse(recov_hist.col(k_col)) % exp_vect % waning_distr.elem(uvec_inds)); 
+    // (span(0,(i_t-1)-t_waning_start),k_col)
   }
   return waning_sum;
 }
@@ -283,6 +282,10 @@ int fcn_waning_S_comp_size(int n_age,arma::vec vec_inf_byage){
   return vector_size;
 }
 
+// [[Rcpp::depends(RcppArmadillo)]]
+// [[Rcpp::export]]
+void printVector(arma::vec v) { Rcpp::Rcout << v << std::endl; }
+
 // // // // // // // // // // // // // // // // // // // // // // // // // // // // 
 // age-structure SIRS model with memory for waning
 // [[Rcpp::depends(RcppArmadillo)]]
@@ -297,12 +300,13 @@ arma::mat rcpp_age_struct_delay_eq(arma::vec t_span, arma::mat contmatr,
   float beta_scale = as<float>(params["beta_scale"]); float gamma = as<float>(params["gamma"]);
   float imp_val = as<float>(params["imp_val"]); // float I_init = as<float>(params["I_init"]);
   int l_wane = waning_distr.size(); int t_n = t_span.size(); int n_age=pop_size.size();
+  int inf_imp;
   // build infection vector
   arma::mat susc_pars_matr=arma::mat(sum(vec_inf_byage),sum(vec_inf_byage),arma::fill::zeros); 
   for (int k=0;k<susc_pars_matr.n_rows;k++) {susc_pars_matr(k,k)=susc_pars[k];}
   arma::mat cont_matr_adj = fcn_stretch_cont_matr(contmatr,vec_inf_byage);
   // matrix product: suscept*contact matrix(adjusted)
-  // age group indices by variable index (eg there are 6 I variables, they belong to age groups: c(1,1,2,2,3,4))
+  // age group indices by variable index (eg there are 6 'I' variables & they belong to age groups: c(1,1,2,2,3,4))
   arma::vec age_ind_seq_var_ind=fcn_age_ind_seq_var_ind(vec_inf_byage,n_age); 
   int n_var_per_type(age_ind_seq_var_ind.size());
   // vector of all variables
@@ -327,10 +331,12 @@ arma::mat rcpp_age_struct_delay_eq(arma::vec t_span, arma::mat contmatr,
   arma::vec inf_vect_val(n_age);
   // matrix for aging & death
   arma::mat matr_aging_death_coeffs(n_var,n_var);
-  matr_aging_death_coeffs=fcn_aging_death_matrix(n_var,n_age,vec_inf_byage,agegr_dur,death_rates,comp_list,TRUE);
+  matr_aging_death_coeffs=fcn_aging_death_matrix(n_var,n_age,vec_inf_byage,
+                                                 agegr_dur,death_rates,comp_list,TRUE);
   // positive aging terms only
   arma::mat matr_aging_posit_only(n_var,n_var);
-  matr_aging_posit_only=fcn_aging_death_matrix(n_var,n_age,vec_inf_byage,agegr_dur,death_rates,comp_list,FALSE);
+  matr_aging_posit_only=fcn_aging_death_matrix(n_var,n_age,vec_inf_byage,
+                                               agegr_dur,death_rates,comp_list,FALSE);
   for (int k_diag=0;k_diag<n_var;k_diag++) {matr_aging_posit_only(k_diag,k_diag)=0;}
   // matrix for waning process (R->S)
   arma::mat matr_waning(n_var,n_var); matr_waning=fcn_waning_matrix(n_var,n_age,vec_inf_byage,comp_list);
@@ -348,16 +354,13 @@ arma::mat rcpp_age_struct_delay_eq(arma::vec t_span, arma::mat contmatr,
   arma::vec waning_vect(n_var); 
   int t_waning_start; float age_rate;
   arma::vec birth_vector(n_var); birth_vector(0)=daily_births; // int l_wane=l_wane*2;
-  // arma::mat recov_hist(l_wane,sum(vec_inf_byage));
   arma::vec waning_terms(n_var_per_type);
   arma::vec waning_terms_aggr(n_age);
   // create output matrix
   arma::mat x_out(t_span.size(),n_var);
   arma::mat out_incid_inf(t_span.size(),inf_ind_uvec.size());
   // fill in initial values
-  x_out.row(0)=init_vals.t(); // 
-  
-  // x_out.rows(0,l_wane-1)=init_vals;
+  x_out.row(0)=init_vals.t(); // x_out.rows(0,l_wane-1)=init_vals;
   // // // // // // // // // // // // // // // // // // // // // // // // 
   // LOOP forward in TIME
 for (int i_t=1;i_t<t_span.size();i_t++) {
@@ -366,27 +369,27 @@ for (int i_t=1;i_t<t_span.size();i_t++) {
     lambda_vect=susc_pars_matr*cont_matr_adj*inf_vect_val;
     for (int k_diag=0;k_diag<inf_ind_uvec.n_rows;k_diag++) {
       susc_vars(k_diag,k_diag)=x_out(i_t-1,susc_inds_uvec[k_diag]); }
+    // importation
+    div_t divresult; divresult=std::div(i_t,30); if (divresult.rem==0) {inf_imp=imp_val;} else {inf_imp=0;};
+    // // if (k_t %% 30==0) {import_inf=10} else {import_inf=0}
     // I variables
-    new_inf_ext.elem(inf_ind_uvec) = susc_vars*lambda_vect;
-    // Rprintf("\n inf vector size: %i",lambda_vect.n_cols);
+    new_inf_ext.elem(inf_ind_uvec) = susc_vars*lambda_vect + inf_imp; // Rprintf("\n inf vector #: %i",lambda_vect.n_cols);
     // S variables
-    new_inf_ext.elem(susc_inds_uvec) = -susc_vars*lambda_vect;
+    new_inf_ext.elem(susc_inds_uvec) = -susc_vars*lambda_vect - inf_imp;
     // new recoveries
-    new_recov_vect = gamma*matr_recov*x_out.row(i_t-1).t();
+    new_recov_vect = gamma*(matr_recov*x_out.row(i_t-1).t()); // printVector(x_out.row(i_t-1).t());
     // aging
     aging_death_vect=matr_aging_death_coeffs*x_out.row(i_t-1).t();
+    // incoming transitions to R compartments via aging (not recoveries)
+    new_recov_from_aging=matr_aging_posit_only*x_out.row(i_t-1).t();
     
+    // if (i_t-l_wane < -1) { recov_hist.row(i_t)=new_recov_vect.elem(recov_inds_uvec).t() + 
+    //                           new_recov_from_aging.elem(recov_inds_uvec).t(); } else { }
     
     // keep in memory I->R and R->R transitions of the last l_wane time steps
-    if (i_t-l_wane < -1) {
-      new_recov_from_aging=matr_aging_posit_only*x_out.row(i_t-1).t();
-      recov_hist.row(i_t)=new_recov_vect.elem(recov_inds_uvec).t() + 
-                              new_recov_from_aging.elem(recov_inds_uvec).t();
-      } else {
-        recov_hist=join_vert(recov_hist.rows(1,l_wane-1),
-                                 new_recov_vect.elem(recov_inds_uvec).t() + 
-                                   new_recov_from_aging.elem(recov_inds_uvec).t());
-      }
+    recov_hist=join_vert(recov_hist.rows(1,l_wane-1),
+                            new_recov_vect.elem(recov_inds_uvec).t() + new_recov_from_aging.elem(recov_inds_uvec).t());
+    // printVector(new_recov_vect.elem(recov_inds_uvec));
     // waning 
     waning_terms=fcn_build_waning_vect(i_t, l_wane, n_var_per_type, agegr_dur,
                            age_ind_seq_var_ind,waning_distr,recov_hist);
@@ -396,9 +399,6 @@ for (int i_t=1;i_t<t_span.size();i_t++) {
     waning_terms_aggr=fcn_matr_subset(recov_inds,-waning_vect,arma::linspace(0,n_age-1,n_age));
     // waning terms INcoming (->S)
     waning_vect.elem(waning_susc_inds_uvec)=waning_terms_aggr;
-    // // importation
-    // div_t divresult; divresult=std::div(i_t,30); if (divresult.rem==0) {t_imp=imp_val;} else {t_imp=0;};
-    // // if (k_t %% 30==0) {import_inf=10} else {import_inf=0}
     
     // add up vectors to get change in variables
     x_out.row(i_t)=x_out.row(i_t-1) + new_inf_ext.t() + new_recov_vect.t() + 
@@ -406,9 +406,11 @@ for (int i_t=1;i_t<t_span.size();i_t++) {
     out_incid_inf.row(i_t)=new_inf_ext.elem(inf_ind_uvec).t();
     
   } // end of time loop
+
+  // output
   if (out_type=="incid"){ 
-    return out_incid_inf;} else { // .rows(l_wane,t_span.size()-1)
+    return out_incid_inf;} else {
     if (out_type=="recov_hist") {
       return recov_hist;} else { return x_out;} 
-      } // .rows(l_wane,t_span.size()-1)
+      } 
 }
