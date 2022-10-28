@@ -259,17 +259,17 @@ comix_url_list <- c(uk="https://zenodo.org/record/6542524",it="https://zenodo.or
 # participant_common: https://zenodo.org/record/6362898/files/CoMix_es_participant_common.csv?download=1
 # sday: https://zenodo.org/record/6362898/files/CoMix_es_sday.csv?download=1
 
-for (k_url in  1:length(comix_url_list)){
+for (k_url in  c(13,15)){
   
   base_url=paste0(array(comix_url_list[k_url]),"/files/CoMix_",names(comix_url_list[k_url]),"_")
   cntr_name=names(comix_url_list)[k_url]
 comix_raw <- left_join(
-                left_join(
-                  read_csv(paste0(ifelse(cntr_name %in% "be", gsub("be","BE",base_url),base_url),"contact_common.csv?download=1")),
-                  read_csv(paste0(base_url,"participant_common.csv?download=1")), by="part_id"),
+        left_join(
+            read_csv(paste0(ifelse(cntr_name %in% "be", gsub("be","BE",base_url),base_url),"contact_common.csv?download=1")),
+            read_csv(paste0(base_url,"participant_common.csv?download=1")), by="part_id"),
                 read_csv(paste0(base_url,"sday.csv?download=1")) , by="part_id") %>% 
                 mutate(date=as.Date(gsub("\\.","-",sday_id))) %>% 
-  mutate(country=cntr_name,cnt_age=paste0(cnt_age_est_min,"_",cnt_age_est_max)) %>% 
+  mutate(cnt_age=paste0(cnt_age_est_min,"_",cnt_age_est_max)) %>% 
   select(part_id,part_age,date,wave,phys_contact,duration_multi,cont_id,cnt_age,
          cnt_home,cnt_work,cnt_school,cnt_transport,cnt_leisure,cnt_otherplace) %>%
   pivot_longer(!c(part_id,part_age,date,wave,phys_contact,duration_multi,cont_id,cnt_age)) %>% # filter(value) %>%
@@ -296,10 +296,21 @@ comix_aggr <- comix_raw %>% group_by(part_id,part_age,date,wave,name) %>%
   summarise(n_part=n(),date=mean(date),value_mean=mean(value,na.rm=T),
             value_median=median(value,na.rm=T),stdev=sd(value,na.rm=T),
             ci95_l=quantile(value,na.rm=T,probs=0.05),ci95_u=quantile(value,na.rm=T,probs=0.95)) %>%
-  filter(!is.na(part_age)) %>% mutate(part_age=factor(part_age),country=cntr_name)
+  filter(!is.na(part_age)) %>% mutate(country=cntr_name)
+# %>% mutate(part_age=factor(part_age),country=cntr_name)
+# levels(comix_fr_aggr$part_age)=levels(comix_fr_aggr$part_age)[c(length(levels(comix_fr_aggr$part_age)),
+#                                                                1:(length(levels(comix_fr_aggr$part_age))-1))]
 
-levels(comix_fr_aggr$part_age)=levels(comix_fr_aggr$part_age)[c(length(levels(comix_fr_aggr$part_age)),
-                                                                1:(length(levels(comix_fr_aggr$part_age))-1))]
+if (length(unique(comix_aggr$part_age))>18){
+  message("agegroups need to be merged")
+  agegrs=c("0-1","1-4","5-11","12-15","16-17","18-29","20-24","25-34","30-39","40-49","45-54","50-59","60-69","70-120")
+  agegrs_lims_num=as.numeric(gsub("-.*","",agegrs))
+  comix_aggr <- comix_aggr %>% mutate(part_age=agegrs[sapply(part_age, function(x) findInterval(x,agegrs_lims_num))]) %>%
+    group_by(part_age,wave,name,metric) %>%
+    # this should be checked (means of means?)
+    summarise(n_part=sum(n_part),date=mean(date),value_mean=mean(value_mean),value_median=median(value_median),
+              stdev=mean(stdev),ci95_l=mean(ci95_l),ci95_u=mean(ci95_u),country=unique(country))
+}
 
 write_csv(comix_aggr,file=paste0("data/comix/comix_aggr_",cntr_name,".csv"))
 
@@ -309,17 +320,24 @@ l_comix_aggr[[k_url]] = comix_aggr
 if (k_url==length(comix_url_list)) {comix_aggr_all = bind_rows(l_comix_aggr)}
 }
 
-for (k_url in 1:length(comix_url_list)) {
-  temp <- read_csv(list.files(path = "data/comix/",pattern="_aggr",full.names = T)[k_url]); l_comix_aggr[[k_url]]=temp
-  if (k_url==length(comix_url_list)) { 
-    comix_aggr_all=bind_rows(l_comix_aggr) }
-}
-
 # plot
-comix_fr_aggr %>% filter(metric %in% "value" & !is.na(part_age) & !name %in% "all") %>% 
-  ggplot(aes(x=date,y=value_mean,fill=name)) + 
-  geom_bar(stat="identity",color="black",width=6) + facet_wrap(~part_age) + scale_x_date(date_breaks="month") +
-  xlab("") + theme_bw() + standard_theme # scale_x_discrete(expand=expansion(0.1,0)) + 
+for (k_url in 1:length(comix_url_list)) {
+  cntr_name=unique(comix_aggr_all$country)[k_url]
+plot_df <- comix_aggr_all %>% filter(metric %in% "value" &(country %in% cntr_name)&(!name %in% "all") & 
+                            !(part_age %in% "Prefer not to answer")) %>%
+  mutate(part_age_num=as.numeric(gsub(".*-","",part_age)), part_age_num=ifelse(is.na(part_age_num),0,part_age_num)+1)
+plot_df$part_age_num=as.numeric(factor(plot_df$part_age_num))
+proper_order=unlist(sapply(1:length(unique(plot_df$part_age_num)), function(x) which(unique(plot_df$part_age_num) %in% x)))
+plot_df$part_age=factor(plot_df$part_age, levels=unique(plot_df$part_age)[proper_order])
+plot_df %>% 
+ggplot(aes(x=date,y=value_mean,fill=name)) + ggtitle(cntr_name) +
+  geom_bar(stat="identity",color="black",width=6) + facet_wrap(~part_age) + labs(fill="") +
+    scale_x_date(date_breaks="month") + xlab("") + theme_bw() + standard_theme + theme(legend.position="top")
+# save
+  ggsave(paste0("data/comix/plots/y_fixed/comix_mean_cont_",cntr_name,".png"),
+         width=30*ifelse(cntr_name %in% "uk",1.3,1),height=22,units="cm")
+  message(paste0("plotting ",cntr_name))
+}
 
 # # part_id
 # comix_raw_participant_common <- read_csv("comix_raw_participant_common.csv")
