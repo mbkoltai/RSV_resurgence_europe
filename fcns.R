@@ -151,6 +151,28 @@ fun_recipr_contmatr<-function(C_m_full,age_group_sizes){
   colnames(C_m_full_symm)=colnames(C_m_full); rownames(C_m_full_symm)=rownames(C_m_full)
   C_m_full_symm
 }
+
+
+### get_OxCGRT -----------------------------
+fcn_get_OxCGRT <- function(OxCGRT_url,cntr_name,sel_cols,start_date){
+  OxCGRT_sel=subset(read_csv(OxCGRT_url),CountryName %in% cntr_name)
+  # convert date format
+  OxCGRT_sel[,"date"]=as.Date(paste(sapply(strsplit(as.character(OxCGRT_sel$Date), "(?<=[0-9]{4})", perl=TRUE), "[[",1),
+                        sapply(strsplit(sapply(strsplit(as.character(OxCGRT_sel$Date), "(?<=[0-9]{4})", perl=TRUE), "[[",2), 
+                                        "(?<=[0-9]{2})", perl=TRUE),function(x){paste(x,collapse="-")}),sep="-"))
+  
+  OxCGRT_sel[,"NPI_on"]=0; OxCGRT_sel$NPI_on[min(which(OxCGRT_sel$StringencyIndex>0)):nrow(OxCGRT_sel)]=1
+  # timespan of model
+  OxCGRT_sel=merge(data.frame(date=seq(as.Date(start_date),max(OxCGRT_sel$date),1)),
+                   OxCGRT_sel[,sel_cols],by="date",all=TRUE)
+  OxCGRT_sel$StringencyIndex[1:which.min(is.na(OxCGRT_sel$StringencyIndex))-1]=0
+  OxCGRT_sel=OxCGRT_sel[!is.na(OxCGRT_sel$StringencyIndex),]; OxCGRT_sel$NPI_on[is.na(OxCGRT_sel$NPI_on)]=0
+  # need to convert it into [0,1] to scale susceptibility (assume: pre-data period had no restrictions)
+  OxCGRT_sel[,"OxCGRT_scaled"]=1-(OxCGRT_sel$StringencyIndex)/100
+  OxCGRT_sel
+}
+
+
 # 
 # 
 # # age structure of country ----------------------------------------------------------
