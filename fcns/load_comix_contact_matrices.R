@@ -32,30 +32,30 @@ for (k_url in  1:length(comix_url_list)){
   comix_raw <- left_joined_input %>% select(where(~!all(is.na(.x)))) %>% filter(!is.na(part_age)) %>%
     filter(!is.na(cnt_age_est_min)) %>% filter(!is.na(cnt_age_est_max)) %>%
     mutate(date=as.Date(gsub("\\.","-",sday_id)),
-           cnt_age_mean=mean(c(cnt_age_est_min,cnt_age_est_max))) %>% #paste0(cnt_age_est_min,"-",cnt_age_est_max)
-    select(part_id,part_age,cnt_age,date,wave,phys_contact,duration_multi,cont_id,
+           cnt_age_mean=(cnt_age_est_min+cnt_age_est_max)/2) %>% #paste0(cnt_age_est_min,"-",cnt_age_est_max)
+    select(part_id,part_age,cnt_age_mean,date,wave,phys_contact,duration_multi,cont_id,
            cnt_home,cnt_work,cnt_school,cnt_transport,cnt_leisure,cnt_otherplace) %>%
-    pivot_longer(!c(part_id,part_age,date,wave,phys_contact,duration_multi,cont_id,cnt_age)) %>% 
-    group_by(part_id,part_age,cnt_age,wave,date) %>% 
+    pivot_longer(!c(part_id,part_age,date,wave,phys_contact,duration_multi,cont_id,cnt_age_mean)) %>% 
+    # 
+    # rowwise() %>% mutate(cnt_age_group=ifelse(cnt_age_mean>1,findInterval(cnt_age_mean,age_lims$age_min),1))
+    comix_raw$cnt_age_group=sapply(comix_raw$cnt_age_mean, 
+                                   function(x) ifelse(x>1,findInterval(x,age_lims$age_min),1))
+    
+  comix_raw <- comix_raw %>% group_by(part_id,part_age,cnt_age_group,wave,date) %>% 
     mutate(value_phys=value*ifelse(phys_contact==1,1,0),
            value_dur_hr=value*c(2.5/60,10/60,37.5/60,2.5,4)[duration_multi],
-           value_phys_dur_hr=value*c(2.5/60,10/60,37.5/60,2.5,4)[duration_multi]*ifelse(phys_contact==1,1,0),
-           cnt_age_group=cnt_age_mean)
+           value_phys_dur_hr=value*c(2.5/60,10/60,37.5/60,2.5,4)[duration_multi]*ifelse(phys_contact==1,1,0))
   # write_csv(comix_raw,file=paste0("data/comix/comix_raw_",cntr_name,".csv"))
   
   message(paste0("PROCESSING: ",cntr_name))
   
   # write_csv(comix_fr_contacts,file = "data/comix/comix_fr_contacts.csv")
   
-    # 
-  # age_lims_contr=data.frame(age_min=as.numeric(gsub("-.*","",gsub("Under 1","0-1",unique(comix_raw$cnt_age)))),
-  #                           age_max=as.numeric(gsub(".*-","",gsub("Under 1","0-1",unique(comix_raw$cnt_age))))) %>%
-  #   mutate(rank=rank(age_min,ties.method="first")) %>% arrange(rank)
-    
   comix_aggr <- comix_raw %>% # filter(!is.na(part_age)) %>% filter(!is.na(cnt_age)) %>%
-    group_by(part_id,part_age,cnt_age,date,wave,name) %>% 
-    summarise(value=sum(value),value_phys=sum(value_phys),
-              value_dur_hr=sum(value_dur_hr),value_phys_dur_hr=sum(value_phys_dur_hr)) %>% 
+    group_by(part_id,cont_id,name) %>% 
+    summarise(value=sum(value),value_phys=sum(value_phys),part_age=unique(part_age),
+              date=unique(date),wave=unique(wave),
+              value_dur_hr=sum(value_dur_hr),value_phys_dur_hr=sum(value_phys_dur_hr)) %>%
     pivot_longer(!c(part_id,part_age,cnt_age,date,wave,name),names_to="metric") %>%
     # sum of all types of contacts
     group_by(part_id,part_age,cnt_age,wave,metric) %>% mutate(all=sum(value)) %>%
