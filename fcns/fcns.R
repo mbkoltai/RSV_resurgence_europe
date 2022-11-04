@@ -1,6 +1,9 @@
 ### ### ### ### ### ### ### ### ### ### ### ### ### ###
 ### ### ### ### ### ### ### ### ### ### ### ### ### ###
 
+# for graphs with factos x-axis
+every_nth = function(n) { return(function(x) {x[c(TRUE, rep(FALSE, n - 1))]}) }
+
 # use as: g(a,b,c) %=% c(1,2,3)
 '%=%' = function(l, r, ...) UseMethod('%=%')
 # Binary Operator

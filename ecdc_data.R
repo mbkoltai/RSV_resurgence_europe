@@ -1,16 +1,12 @@
 # settings
 rm(list=ls())
 library(tidyverse); library(wpp2019); library(RcppRoll); library(lubridate); # library(here)
-source("fcns.R")
-data(pop)
-# setwd("/home/lshmk17/Desktop/research/models/RSV_model/transmission/new_project_2022/ecdc_data/")
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
-standard_theme<-theme(plot.title=element_text(hjust=0.5,size=16),
-  axis.text.x=element_text(size=9,angle=90,vjust=1/2),axis.text.y=element_text(size=9),
-  axis.title=element_text(size=14), text=element_text(family="Calibri"))
+source("fcns.R"); data(pop)
+# standard_theme<-theme(plot.title=element_text(hjust=0.5,size=16),
+#   axis.text.x=element_text(size=9,angle=90,vjust=1/2),axis.text.y=element_text(size=9),
+#   axis.title=element_text(size=14), text=element_text(family="Calibri"))
 # panel.grid=element_line(linetype="dashed",colour="black",size=0.1)
-
-every_nth = function(n) { return(function(x) {x[c(TRUE, rep(FALSE, n - 1))]}) }
 
 ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### 
 ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### 
@@ -194,7 +190,6 @@ ggplot(nonsent_positive_samples %>% filter(!RegionName %in% c("Latvia","Estonia"
 # nonsentinel
 ggsave(paste0("ecdc_rsv_nonsentinel_detections.png"),width=38,height=22,units="cm")
 
-
 # how much earlier did off-season outbreaks happen?
 # resurgence timing # epi_year_start_wk
 resurgence_start <- left_join(
@@ -246,88 +241,34 @@ ggsave(paste0("resurgence_stringency_school_clos.png"),width=38,height=22,units=
 # CoMix
 
 # all URLs
-comix_url_list <- c(uk="https://zenodo.org/record/6542524",it="https://zenodo.org/record/6362888",
-  ch="https://zenodo.org/record/6542657",dk="https://zenodo.org/record/6362899",
-  sk="https://zenodo.org/record/6535357",at="https://zenodo.org/record/6362906",
-  hu="https://zenodo.org/record/6535344",ee="https://zenodo.org/record/6535313",
-  fr="https://zenodo.org/record/6362893",fi="https://zenodo.org/record/6542664",
-  si="https://zenodo.org/record/6362865",pl="https://zenodo.org/record/6362879",
-  nl="https://zenodo.org/record/4790347",es="https://zenodo.org/record/6362898",
-  be="https://zenodo.org/record/7086043")
+# comix_url_list <- c(uk="https://zenodo.org/record/6542524",it="https://zenodo.org/record/6362888",
+#   ch="https://zenodo.org/record/6542657",dk="https://zenodo.org/record/6362899",
+#   sk="https://zenodo.org/record/6535357",at="https://zenodo.org/record/6362906",
+#   hu="https://zenodo.org/record/6535344",ee="https://zenodo.org/record/6535313",
+#   fr="https://zenodo.org/record/6362893",fi="https://zenodo.org/record/6542664",
+#   si="https://zenodo.org/record/6362865",pl="https://zenodo.org/record/6362879",
+#   nl="https://zenodo.org/record/4790347",es="https://zenodo.org/record/6362898",
+#   be="https://zenodo.org/record/7086043")
 
 # contact_common: https://zenodo.org/record/6362898/files/CoMix_es_contact_common.csv?download=1
 # participant_common: https://zenodo.org/record/6362898/files/CoMix_es_participant_common.csv?download=1
 # sday: https://zenodo.org/record/6362898/files/CoMix_es_sday.csv?download=1
 
-for (k_url in  c(13,15)){
-  
-  base_url=paste0(array(comix_url_list[k_url]),"/files/CoMix_",names(comix_url_list[k_url]),"_")
-  cntr_name=names(comix_url_list)[k_url]
-comix_raw <- left_join(
-        left_join(
-            read_csv(paste0(ifelse(cntr_name %in% "be", gsub("be","BE",base_url),base_url),"contact_common.csv?download=1")),
-            read_csv(paste0(base_url,"participant_common.csv?download=1")), by="part_id"),
-                read_csv(paste0(base_url,"sday.csv?download=1")) , by="part_id") %>% 
-                mutate(date=as.Date(gsub("\\.","-",sday_id))) %>% 
-  mutate(cnt_age=paste0(cnt_age_est_min,"_",cnt_age_est_max)) %>% 
-  select(part_id,part_age,date,wave,phys_contact,duration_multi,cont_id,cnt_age,
-         cnt_home,cnt_work,cnt_school,cnt_transport,cnt_leisure,cnt_otherplace) %>%
-  pivot_longer(!c(part_id,part_age,date,wave,phys_contact,duration_multi,cont_id,cnt_age)) %>% # filter(value) %>%
-  group_by(part_id,part_age,wave,date) %>% 
-  mutate(value_phys=value*ifelse(phys_contact==1,1,0),
-         value_dur_hr=value*c(2.5/60,10/60,37.5/60,2.5,4)[duration_multi],
-         value_phys_dur_hr=value*c(2.5/60,10/60,37.5/60,2.5,4)[duration_multi]*ifelse(phys_contact==1,1,0))
-# write_csv(comix_raw,file=paste0("data/comix/comix_raw_",cntr_name,".csv"))
-
-message(paste0("PROCESSING: ",cntr_name))
-
-# write_csv(comix_fr_contacts,file = "data/comix/comix_fr_contacts.csv")
-
-comix_aggr <- comix_raw %>% group_by(part_id,part_age,date,wave,name) %>% 
-  summarise(value=sum(value),value_phys=sum(value_phys),
-            value_dur_hr=sum(value_dur_hr),value_phys_dur_hr=sum(value_phys_dur_hr)) %>% 
-  pivot_longer(!c(part_id,part_age,date,wave,name),names_to="metric") %>%
-  # sum of all types of contacts
-  group_by(part_id,part_age,wave,metric) %>% mutate(all=sum(value)) %>%
-    pivot_longer(c(all,value),names_to="nn") %>% 
-    mutate(name=ifelse(nn %in% "all","all",name)) %>% distinct() %>% select(!nn) %>%
-  # sum indiv participants
-    group_by(part_age,wave,name,metric) %>% 
-  summarise(n_part=n(),date=mean(date),value_mean=mean(value,na.rm=T),
-            value_median=median(value,na.rm=T),stdev=sd(value,na.rm=T),
-            ci95_l=quantile(value,na.rm=T,probs=0.05),ci95_u=quantile(value,na.rm=T,probs=0.95)) %>%
-  filter(!is.na(part_age)) %>% mutate(country=cntr_name)
-# %>% mutate(part_age=factor(part_age),country=cntr_name)
-# levels(comix_fr_aggr$part_age)=levels(comix_fr_aggr$part_age)[c(length(levels(comix_fr_aggr$part_age)),
-#                                                                1:(length(levels(comix_fr_aggr$part_age))-1))]
-
-if (length(unique(comix_aggr$part_age))>18){
-  message("agegroups need to be merged")
-  agegrs=c("0-1","1-4","5-11","12-15","16-17","18-29","20-24","25-34","30-39","40-49","45-54","50-59","60-69","70-120")
-  agegrs_lims_num=as.numeric(gsub("-.*","",agegrs))
-  comix_aggr <- comix_aggr %>% mutate(part_age=agegrs[sapply(part_age, function(x) findInterval(x,agegrs_lims_num))]) %>%
-    group_by(part_age,wave,name,metric) %>%
-    # this should be checked (means of means?)
-    summarise(n_part=sum(n_part),date=mean(date),value_mean=mean(value_mean),value_median=median(value_median),
-              stdev=mean(stdev),ci95_l=mean(ci95_l),ci95_u=mean(ci95_u),country=unique(country))
-}
-
-write_csv(comix_aggr,file=paste0("data/comix/comix_aggr_",cntr_name,".csv"))
-
-gc()
-message(paste0("DONE WITH: ",cntr_name))
-l_comix_aggr[[k_url]] = comix_aggr
-if (k_url==length(comix_url_list)) {comix_aggr_all = bind_rows(l_comix_aggr)}
-}
+# if COMIX datafile does not exist yet (this downloads files from Zenodo, takes some time!)
+source("fcns/load_comix.R")
+# if exists
+comix_aggr_all <- read_csv("data/comix/comix_aggr_all.csv")
 
 # plot
 for (k_url in 1:length(comix_url_list)) {
   cntr_name=unique(comix_aggr_all$country)[k_url]
 plot_df <- comix_aggr_all %>% filter(metric %in% "value" &(country %in% cntr_name)&(!name %in% "all") & 
                             !(part_age %in% "Prefer not to answer")) %>%
-  mutate(part_age_num=as.numeric(gsub(".*-","",part_age)), part_age_num=ifelse(is.na(part_age_num),0,part_age_num)+1)
+  mutate(part_age_num=as.numeric(gsub(".*-","",part_age)), 
+         part_age_num=ifelse(is.na(part_age_num),0,part_age_num)+1)
 plot_df$part_age_num=as.numeric(factor(plot_df$part_age_num))
-proper_order=unlist(sapply(1:length(unique(plot_df$part_age_num)), function(x) which(unique(plot_df$part_age_num) %in% x)))
+proper_order=unlist(sapply(1:length(unique(plot_df$part_age_num)), 
+                           function(x) which(unique(plot_df$part_age_num) %in% x)))
 plot_df$part_age=factor(plot_df$part_age, levels=unique(plot_df$part_age)[proper_order])
 plot_df %>% 
 ggplot(aes(x=date,y=value_mean,fill=name)) + ggtitle(cntr_name) +
@@ -415,7 +356,8 @@ for (k_file in 1:length(list_files_coviddatahub)) {
   # i7a_health: # times did you leave home yestday? 
   if (contact_num_flag){
   temp_coviddatahub <- read_csv(list_files_coviddatahub[k_file]) %>% 
-    select(c(!!record_varname,endtime,qweek,weight,i1_health,i2_health,i7a_health)) %>% mutate(cntr=country_name)
+    select(c(!!record_varname,endtime,age,qweek,weight,i1_health,i2_health,i7a_health)) %>% 
+    mutate(cntr=country_name)
   if (country_name %in% "sweden"){ temp_coviddatahub <- temp_coviddatahub %>% rename(RecordNo=record) }
   l_coviddatahub_num_contact[[k_file]] <- temp_coviddatahub %>% 
     mutate(date=dmy(substr(endtime,1,nchar(endtime)-6)),qweek=as.numeric(gsub("week ","",qweek))) %>% 
@@ -434,7 +376,7 @@ for (k_file in 1:length(list_files_coviddatahub)) {
     }
 }
 
-# write_csv(coviddatahub,"data/coviddatahub/coviddatahub_mask_aggreg.csv")
+# write_csv(coviddatahub_num_contact,"data/coviddatahub/coviddatahub_num_contact.csv")
 # write_csv(coviddatahub,"data/coviddatahub/coviddatahub_mask_avoid_aggreg.csv")
 
 # plot yes/no % for masking + avoided X behaviours
@@ -459,7 +401,6 @@ ggplot(aes(x=week_date,y=value,fill=name),alpha=2/3) +
   theme(axis.text.x=element_text(size=10),legend.position="top")
 # mask wearing %
 ggsave(paste0("data/coviddatahub/",k_plot,".png"),width=30,height=22,units="cm")
-
 }
 
 # time courses of masking components (work, publ transp etc)
@@ -470,9 +411,10 @@ coviddatahub %>% filter(grepl("mask",name) & value %in% list("Always",c("Always"
   mutate(name=factor(name,levels=c("mask_outside_home","mask_work","mask_publ_transp",
                                    "mask_grocery","mask_shops","mask_at_home"))) %>%
   # group_by(year_week) %>% complete(cntr,name) %>%
-ggplot(aes(x=week_date,xend=week_date+14,yend=100*percentage,y=100*percentage,color=name,size=grepl("out",name))) +
+ggplot(aes(x=week_date,xend=week_date+14,yend=100*percentage,
+           y=100*percentage,color=name,size=grepl("out",name))) +
   geom_segment(size=1) + facet_wrap(~cntr) + labs(size="",color="") + # 
-  scale_x_date(date_breaks="3 month",expand=expansion(0.01,0)) + # scale_size_manual(values=c(1,1.4),guide="none") +
+  scale_x_date(date_breaks="3 month",expand=expansion(0.01,0)) + #scale_size_manual(values=c(1,1.4),guide="none") +
   scale_color_manual(values=c("black","blue","red","green","orange","grey")) + 
   xlab("") + ylab("mask wearing (%)") + theme_bw() + standard_theme + 
   theme(axis.text.x=element_text(size=10),legend.position = "top")
@@ -482,11 +424,11 @@ ggsave(paste0("data/coviddatahub/mask_wearing_",c("always_","always_frequently_"
 
 ### ### ### ### ### ### ### ### ### ### ### ### 
 # contact numbers
-plot_var=c("mean_num_weighted","median_num_weighted")[1]
-plot_var_type=1
-coviddatahub_num_contact %>% filter(grepl(c("contact","left_home")[plot_var_type],name)) %>%
+
+plot_var=c("mean_num_weighted","median_num_weighted")[2]; plot_var_type=1
+coviddatahub_num_contact %>% filter(grepl(c("contact","left_home")[plot_var_type],name) & !cntr %in% "australia") %>%
 ggplot(aes(x=date,y=get(plot_var),fill=name),alpha=2/3) + 
-  geom_bar(stat="identity",width=3) + # geom_line(size=1) + geom_point(shape=21) + #geom_col(width=5)+
+  geom_bar(stat="identity",width=3) + # geom_line(size=1) + geom_point(shape=21) + # geom_col(width=5) +
   facet_wrap(~cntr) + scale_x_date(date_breaks="3 month",expand=expansion(0.01,0)) + 
   scale_y_continuous(expand=expansion(0.01,0)) + scale_fill_manual(values=c("blue","red2")) + labs(fill="") +
   xlab("") + ylab(c("number of contacts","# times left home")[plot_var_type]) + theme_bw() + standard_theme + 
