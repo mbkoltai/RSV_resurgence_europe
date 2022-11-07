@@ -51,9 +51,9 @@ ggplot(num_tests) + geom_col(aes(x=Time,y=n_test,group=1)) + facet_wrap(~RegionN
                filter(week %in% 1),aes(xintercept=Time),size=1/3,linetype="dashed",color="red") +
   geom_rect(data=num_tests %>% filter(week>=40|week<=14) %>% 
               group_by(RegionName,epi_year) %>% 
-            summarise(start=max(Time),end=min(Time)),
+              summarise(start=max(Time),end=min(Time)),
             aes(xmin=end,xmax=start,ymin=0,ymax=Inf),color=NA,fill="red",alpha=0.1) +
-            theme_bw() + standard_theme + theme(strip.text=element_text(size=14)) +
+  theme_bw() + standard_theme + theme(strip.text=element_text(size=14)) +
   scale_x_discrete(breaks=every_nth(n=14)) + 
   scale_y_continuous(expand=expansion(0.01,0)) + xlab("") + ylab("# tests")
 
@@ -68,9 +68,9 @@ posit_data_file <- "ECDC_surveillance_data_Respiratory_Syncytial_Virus_nonsent_p
 epi_yr_start_wk=28
 ECDC_surveillance_data_positivity <- read_csv(posit_data_file) %>% select(!c(TxtValue,Unit)) %>% 
   mutate(year=as.numeric(substr(Time,1,4)),week=as.numeric(substr(Time,7,8)),
-          date=as.Date(paste(year,week,1, sep="-"),"%Y-%U-%u"),
+         date=as.Date(paste(year,week,1, sep="-"),"%Y-%U-%u"),
          epi_year=ifelse(as.numeric(week)>=epi_yr_start_wk,year,year-1),
-          NumValue=as.numeric(NumValue)) %>% filter(!is.na(NumValue))
+         NumValue=as.numeric(NumValue)) %>% filter(!is.na(NumValue))
 
 nonsent_posit_filt <- ECDC_surveillance_data_positivity %>% 
   filter(date>=as.Date("2016-09-01") & !RegionName %in% "EU/EEA" & 
@@ -107,7 +107,7 @@ peak_weeks_years <- bind_rows(l) %>% mutate(RegionName=posit_season_lims$RegionN
 
 # correct epi_year limits
 nonsent_posit_filt <- left_join(nonsent_posit_filt, posit_season_lims %>%
-  select(!c(mean_peak,peak_week,start_from_peak_wk,end_from_peak_wk))) %>% 
+                                  select(!c(mean_peak,peak_week,start_from_peak_wk,end_from_peak_wk))) %>% 
   mutate(epi_year=ifelse(week>=epi_year_start_wk,year(date),year(date)-1))
 
 # plot positivity with seasons
@@ -118,7 +118,7 @@ ggplot(nonsent_posit_filt %>% group_by(RegionName,epi_year) %>%
   geom_vline(data=peak_weeks_years,aes(xintercept=peak_week),size=1/2.5,linetype="dashed",color="red") +
   geom_rect(data=peak_weeks_years,aes(xmax=season_stop,xmin=season_start,
                                       ymin=0,ymax=Inf),color=NA,fill="red",alpha=0.1) +
-          xlab("") + ylab("% positive") + 
+  xlab("") + ylab("% positive") + 
   scale_x_date(date_breaks="3 month",expand=expansion(0.01,0)) + 
   scale_y_continuous(expand=expansion(0.01,0)) + 
   theme_bw() + standard_theme + theme(strip.text=element_text(size=14))
@@ -193,37 +193,37 @@ ggsave(paste0("ecdc_rsv_nonsentinel_detections.png"),width=38,height=22,units="c
 # how much earlier did off-season outbreaks happen?
 # resurgence timing # epi_year_start_wk
 resurgence_start <- left_join(
-            left_join(nonsent_posit_filt %>% select(!year), 
-                      posit_season_lims %>% select(!c(start_from_peak_wk,end_from_peak_wk)),
-                      by=c("RegionName","epi_year_start_wk")) %>% 
-                group_by(RegionName,epi_year) %>% arrange(date) %>% 
-                mutate(smooth_posit=roll_mean(NumValue,n=3,fill=NA,na.rm=T)) %>% group_by(RegionName) %>%
-                summarise(date_resurg=min(date[smooth_posit>=mean_peak/3 & epi_year>=2020],na.rm=T),
-                    date_last_pre_resurg=max(date[smooth_posit>=mean_peak/3 & epi_year<=2019],na.rm=T),
-                    epi_year_start_wk=unique(epi_year_start_wk),
-                    epi_year=min(epi_year[smooth_posit>=mean_peak/3 & epi_year>=2020],na.rm=T)) %>%
-                mutate(week_resurg=week(date_resurg)),
-            peak_weeks_years %>% filter(epi_year==2021) %>% select(!epi_year),by=c("RegionName")) %>%
-              mutate(early_outbreak=date_resurg<season_start & date_resurg>date_last_pre_resurg,
-                     # resurg_epiyear=ifelse(week_resurg<epi_year_start_wk,year(date_resurg)-1,year(date_resurg)),
-                     forward_shift=ifelse(early_outbreak,peak_week-date_resurg,NA))
+  left_join(nonsent_posit_filt %>% select(!year), 
+            posit_season_lims %>% select(!c(start_from_peak_wk,end_from_peak_wk)),
+            by=c("RegionName","epi_year_start_wk")) %>% 
+    group_by(RegionName,epi_year) %>% arrange(date) %>% 
+    mutate(smooth_posit=roll_mean(NumValue,n=3,fill=NA,na.rm=T)) %>% group_by(RegionName) %>%
+    summarise(date_resurg=min(date[smooth_posit>=mean_peak/3 & epi_year>=2020],na.rm=T),
+              date_last_pre_resurg=max(date[smooth_posit>=mean_peak/3 & epi_year<=2019],na.rm=T),
+              epi_year_start_wk=unique(epi_year_start_wk),
+              epi_year=min(epi_year[smooth_posit>=mean_peak/3 & epi_year>=2020],na.rm=T)) %>%
+    mutate(week_resurg=week(date_resurg)),
+  peak_weeks_years %>% filter(epi_year==2021) %>% select(!epi_year),by=c("RegionName")) %>%
+  mutate(early_outbreak=date_resurg<season_start & date_resurg>date_last_pre_resurg,
+         # resurg_epiyear=ifelse(week_resurg<epi_year_start_wk,year(date_resurg)-1,year(date_resurg)),
+         forward_shift=ifelse(early_outbreak,peak_week-date_resurg,NA))
 
 # Oxford stringency index 
 # OxCGRT_latest <- read_csv("https://github.com/OxCGRT/covid-policy-tracker/raw/master/data/OxCGRT_latest.csv")
 # process
 OxCGRT_input <- fcn_get_OxCGRT(
   OxCGRT_url="https://github.com/OxCGRT/covid-policy-tracker/raw/master/data/OxCGRT_latest.csv",
-                               cntr_name=resurgence_start$RegionName,
-      sel_cols=c("date","StringencyIndex","NPI_on","CountryName","CountryCode",
-                 "C1_School closing","C2_Workplace closing"),
-                               start_date="2020-02-01") %>% group_by(CountryName) %>% 
+  cntr_name=resurgence_start$RegionName,
+  sel_cols=c("date","StringencyIndex","NPI_on","CountryName","CountryCode",
+             "C1_School closing","C2_Workplace closing"),
+  start_date="2020-02-01") %>% group_by(CountryName) %>% 
   mutate(stringency_scaled_smoothed=1-roll_mean(OxCGRT_scaled,30,align="center",fill=NA)) %>% 
   filter(!is.na(CountryCode))
 
 # plot
 OxCGRT_input %>% filter(NPI_on==1 & date>=as.Date("2020-02-25") & date<as.Date("2021-12-01")) %>% 
   select(c(date,CountryName,StringencyIndex,`C1_School closing`)) %>% mutate(StringencyIndex=StringencyIndex/100,
-          `C1_School closing`=`C1_School closing`/max(OxCGRT_input$`C1_School closing`)) %>% 
+                                                                             `C1_School closing`=`C1_School closing`/max(OxCGRT_input$`C1_School closing`)) %>% 
   pivot_longer(!c(date,CountryName)) %>%
   ggplot() + geom_line(aes(x=date,y=value,color=name)) + facet_wrap(~CountryName) + 
   scale_color_manual(values=c("black","blue")) + scale_x_date(date_breaks="2 month",expand=expansion(0.01,0)) + 
@@ -232,7 +232,7 @@ OxCGRT_input %>% filter(NPI_on==1 & date>=as.Date("2020-02-25") & date<as.Date("
   geom_vline(xintercept=as.Date("2021-01-01"),color="grey") +
   xlab("") + ylab("") + theme_bw() + standard_theme + 
   theme(strip.text=element_text(size=15),legend.title=element_blank(),
-                                      legend.text=element_text(size=14),legend.position="top")
+        legend.text=element_text(size=14),legend.position="top")
 # ggsave
 ggsave(paste0("resurgence_stringency_school_clos.png"),width=38,height=22,units="cm")
 
@@ -262,19 +262,19 @@ comix_aggr_all <- read_csv("data/comix/comix_aggr_all.csv")
 # plot
 for (k_url in 1:length(comix_url_list)) {
   cntr_name=unique(comix_aggr_all$country)[k_url]
-plot_df <- comix_aggr_all %>% filter(metric %in% "value" &(country %in% cntr_name)&(!name %in% "all") & 
-                            !(part_age %in% "Prefer not to answer")) %>%
-  mutate(part_age_num=as.numeric(gsub(".*-","",part_age)), 
-         part_age_num=ifelse(is.na(part_age_num),0,part_age_num)+1)
-plot_df$part_age_num=as.numeric(factor(plot_df$part_age_num))
-proper_order=unlist(sapply(1:length(unique(plot_df$part_age_num)), 
-                           function(x) which(unique(plot_df$part_age_num) %in% x)))
-plot_df$part_age=factor(plot_df$part_age, levels=unique(plot_df$part_age)[proper_order])
-plot_df %>% 
-ggplot(aes(x=date,y=value_mean,fill=name)) + ggtitle(cntr_name) +
-  geom_bar(stat="identity",color="black",width=6) + facet_wrap(~part_age) + labs(fill="") +
+  plot_df <- comix_aggr_all %>% filter(metric %in% "value" &(country %in% cntr_name)&(!name %in% "all") & 
+                                         !(part_age %in% "Prefer not to answer")) %>%
+    mutate(part_age_num=as.numeric(gsub(".*-","",part_age)), 
+           part_age_num=ifelse(is.na(part_age_num),0,part_age_num)+1)
+  plot_df$part_age_num=as.numeric(factor(plot_df$part_age_num))
+  proper_order=unlist(sapply(1:length(unique(plot_df$part_age_num)), 
+                             function(x) which(unique(plot_df$part_age_num) %in% x)))
+  plot_df$part_age=factor(plot_df$part_age, levels=unique(plot_df$part_age)[proper_order])
+  plot_df %>% 
+    ggplot(aes(x=date,y=value_mean,fill=name)) + ggtitle(cntr_name) +
+    geom_bar(stat="identity",color="black",width=6) + facet_wrap(~part_age) + labs(fill="") +
     scale_x_date(date_breaks="month") + xlab("") + theme_bw() + standard_theme + theme(legend.position="top")
-# save
+  # save
   ggsave(paste0("data/comix/plots/y_fixed/comix_mean_cont_",cntr_name,".png"),
          width=30*ifelse(cntr_name %in% "uk",1.3,1),height=22,units="cm")
   message(paste0("plotting ",cntr_name))
@@ -296,58 +296,58 @@ for (k_file in 1:length(list_files_coviddatahub)) {
   record_varname<-ifelse(country_name %in% "sweden","record","RecordNo")
   # masking variables
   if (mask_avoid){
-  temp_coviddatahub <- read_csv(list_files_coviddatahub[k_file]) %>% 
+    temp_coviddatahub <- read_csv(list_files_coviddatahub[k_file]) %>% 
       select(c(!!record_varname,endtime,qweek,weight,
                i12_health_1,i12_health_21,i12_health_22,i12_health_23,i12_health_24,i12_health_25,
                i6_health,i12_health_5,i12_health_6,i12_health_7,i12_health_8,i12_health_9,
                i12_health_10,i12_health_11,i12_health_12,i12_health_13,i12_health_14,
                i12_health_15,i12_health_16,i12_health_20)) 
-  if (country_name %in% "sweden"){ temp_coviddatahub <- temp_coviddatahub %>% rename(RecordNo=record) }
-  # selecting columns
-  l_coviddatahub_mask_avoid[[k_file]] <- temp_coviddatahub %>% mutate(cntr=country_name) %>%
-    pivot_longer(!c(RecordNo,endtime,qweek,cntr,weight)) %>% 
-    mutate(value=factor(value,levels=c("Always","Frequently","Sometimes","Rarely","Not at all"))) %>% 
-    pivot_wider(names_from=name,values_from=value) %>% 
-    mutate(date=dmy(substr(endtime,1,nchar(endtime)-6)),qweek=as.numeric(gsub("week ","",qweek))) %>% 
-    pivot_longer(!c(RecordNo,endtime,qweek,date,cntr,weight)) %>% filter(!is.na(value)) %>% 
-    group_by(qweek,cntr,name,value) %>%
-    summarise(date=max(date),n_mask=n(),n_mask_weighted=sum(weight)) %>% group_by(qweek,name,cntr) %>% 
-    mutate(week_date=max(date),percentage=n_mask/sum(n_mask,na.rm=F)) %>% 
-    mutate(name=case_when(name %in% "i12_health_1" ~ "mask_outside_home",
-                          name %in% "i12_health_22" ~ "mask_grocery",
-                          name %in% "i12_health_23" ~ "mask_shops",
-                          name %in% "i12_health_24" ~ "mask_work",
-                          name %in% "i12_health_25" ~ "mask_publ_transp",
-                          name %in% "i12_health_21" ~ "mask_at_home",
-                          # avoidance behaviours:
-                          # i6_health: self-isolate when sick
-                          # i12_health_5: avoided contact w/ ppl w/ symptoms
-                          # i12_health_6: Avoided going out in general
-                          # i12_health_7: avoided going to hosp/hc setting
-                          # i12_health_8: Avoided taking public transport
-                          # i12_health_9: Avoided working outside your home
-                          # i12_health_10: Avoided letting your children go to school/ university
-                          # i12_health_11: Avoided having guests to your home
-                          # i12_health_12: Avoided small social gatherings (not more than 2 people),
-                          # i12_health_13: Avoided medium-sized social gatherings (between 3 and 10 people)
-                          # i12_health_14: Avoided large-sized social gatherings (more than 10 people)
-                          # i12_health_15: Avoided crowded areas
-                          # i12_health_16: Avoided going to shops
-                          # i12_health_20: Avoided touching objects in public (e.g. elevator buttons or doors)
-                          name %in% "i6_health" ~ "self_isol",
-                          name %in% "i12_health_5" ~ "avoid_contact_sympt",
-                          name %in% "i12_health_6" ~ "avoid_go_out",
-                          name %in% "i12_health_7" ~ "avoid_hosp",
-                          name %in% "i12_health_8" ~ "avoid_publ_transp",
-                          name %in% "i12_health_9" ~ "avoid_work_outside",
-                          name %in% "i12_health_10" ~ "avoid_let_child_school",
-                          name %in% "i12_health_11" ~ "avoid_guests_home",
-                          name %in% "i12_health_12" ~ "avoid_small_gath",
-                          name %in% "i12_health_13" ~ "avoid_med_gath",
-                          name %in% "i12_health_14" ~ "avoid_large_gath",
-                          name %in% "i12_health_15" ~ "avoid_crowd_area",
-                          name %in% "i12_health_16" ~ "avoid_shops",
-                          name %in% "i12_health_20" ~ "avoid_touch_surf"))
+    if (country_name %in% "sweden"){ temp_coviddatahub <- temp_coviddatahub %>% rename(RecordNo=record) }
+    # selecting columns
+    l_coviddatahub_mask_avoid[[k_file]] <- temp_coviddatahub %>% mutate(cntr=country_name) %>%
+      pivot_longer(!c(RecordNo,endtime,qweek,cntr,weight)) %>% 
+      mutate(value=factor(value,levels=c("Always","Frequently","Sometimes","Rarely","Not at all"))) %>% 
+      pivot_wider(names_from=name,values_from=value) %>% 
+      mutate(date=dmy(substr(endtime,1,nchar(endtime)-6)),qweek=as.numeric(gsub("week ","",qweek))) %>% 
+      pivot_longer(!c(RecordNo,endtime,qweek,date,cntr,weight)) %>% filter(!is.na(value)) %>% 
+      group_by(qweek,cntr,name,value) %>%
+      summarise(date=max(date),n_mask=n(),n_mask_weighted=sum(weight)) %>% group_by(qweek,name,cntr) %>% 
+      mutate(week_date=max(date),percentage=n_mask/sum(n_mask,na.rm=F)) %>% 
+      mutate(name=case_when(name %in% "i12_health_1" ~ "mask_outside_home",
+                            name %in% "i12_health_22" ~ "mask_grocery",
+                            name %in% "i12_health_23" ~ "mask_shops",
+                            name %in% "i12_health_24" ~ "mask_work",
+                            name %in% "i12_health_25" ~ "mask_publ_transp",
+                            name %in% "i12_health_21" ~ "mask_at_home",
+                            # avoidance behaviours:
+                            # i6_health: self-isolate when sick
+                            # i12_health_5: avoided contact w/ ppl w/ symptoms
+                            # i12_health_6: Avoided going out in general
+                            # i12_health_7: avoided going to hosp/hc setting
+                            # i12_health_8: Avoided taking public transport
+                            # i12_health_9: Avoided working outside your home
+                            # i12_health_10: Avoided letting your children go to school/ university
+                            # i12_health_11: Avoided having guests to your home
+                            # i12_health_12: Avoided small social gatherings (not more than 2 people),
+                            # i12_health_13: Avoided medium-sized social gatherings (between 3 and 10 people)
+                            # i12_health_14: Avoided large-sized social gatherings (more than 10 people)
+                            # i12_health_15: Avoided crowded areas
+                            # i12_health_16: Avoided going to shops
+                            # i12_health_20: Avoided touching objects in public (e.g. elevator buttons or doors)
+                            name %in% "i6_health" ~ "self_isol",
+                            name %in% "i12_health_5" ~ "avoid_contact_sympt",
+                            name %in% "i12_health_6" ~ "avoid_go_out",
+                            name %in% "i12_health_7" ~ "avoid_hosp",
+                            name %in% "i12_health_8" ~ "avoid_publ_transp",
+                            name %in% "i12_health_9" ~ "avoid_work_outside",
+                            name %in% "i12_health_10" ~ "avoid_let_child_school",
+                            name %in% "i12_health_11" ~ "avoid_guests_home",
+                            name %in% "i12_health_12" ~ "avoid_small_gath",
+                            name %in% "i12_health_13" ~ "avoid_med_gath",
+                            name %in% "i12_health_14" ~ "avoid_large_gath",
+                            name %in% "i12_health_15" ~ "avoid_crowd_area",
+                            name %in% "i12_health_16" ~ "avoid_shops",
+                            name %in% "i12_health_20" ~ "avoid_touch_surf"))
   }
   ### ### ### ### ### 
   # numerical variables (contacts): 
@@ -355,25 +355,25 @@ for (k_file in 1:length(list_files_coviddatahub)) {
   # i2_health: # physical contact w/ ppl outside household
   # i7a_health: # times did you leave home yestday? 
   if (contact_num_flag){
-  temp_coviddatahub <- read_csv(list_files_coviddatahub[k_file]) %>% 
-    select(c(!!record_varname,endtime,age,qweek,weight,i1_health,i2_health,i7a_health)) %>% 
-    mutate(cntr=country_name)
-  if (country_name %in% "sweden"){ temp_coviddatahub <- temp_coviddatahub %>% rename(RecordNo=record) }
-  l_coviddatahub_num_contact[[k_file]] <- temp_coviddatahub %>% 
-    mutate(date=dmy(substr(endtime,1,nchar(endtime)-6)),qweek=as.numeric(gsub("week ","",qweek))) %>% 
-    pivot_longer(!c(RecordNo,endtime,qweek,date,cntr,weight)) %>% 
-    filter(!is.na(value)) %>% group_by(qweek,cntr,name) %>%
-    summarise(date=max(date),mean_num=mean(value),mean_num_weighted=mean(value*weight),
-              median_num=median(value),median_num_weighted=median(value*weight)) %>%
-    mutate(name=case_when(name %in% "i1_health" ~ "contact_in_hh",
-                          name %in% "i2_health" ~ "contact_out_hh",
-                          name %in% "i7a_health" ~ "left_home"))
+    temp_coviddatahub <- read_csv(list_files_coviddatahub[k_file]) %>% 
+      select(c(!!record_varname,endtime,age,qweek,weight,i1_health,i2_health,i7a_health)) %>% 
+      mutate(cntr=country_name)
+    if (country_name %in% "sweden"){ temp_coviddatahub <- temp_coviddatahub %>% rename(RecordNo=record) }
+    l_coviddatahub_num_contact[[k_file]] <- temp_coviddatahub %>% 
+      mutate(date=dmy(substr(endtime,1,nchar(endtime)-6)),qweek=as.numeric(gsub("week ","",qweek))) %>% 
+      pivot_longer(!c(RecordNo,endtime,qweek,date,cntr,weight)) %>% 
+      filter(!is.na(value)) %>% group_by(qweek,cntr,name) %>%
+      summarise(date=max(date),mean_num=mean(value),mean_num_weighted=mean(value*weight),
+                median_num=median(value),median_num_weighted=median(value*weight)) %>%
+      mutate(name=case_when(name %in% "i1_health" ~ "contact_in_hh",
+                            name %in% "i2_health" ~ "contact_out_hh",
+                            name %in% "i7a_health" ~ "left_home"))
   }
   message(k_file)
   if (k_file==length(list_files_coviddatahub)) {
-   coviddatahub <- bind_rows(l_coviddatahub_mask_avoid)
-   coviddatahub_num_contact <- bind_rows(l_coviddatahub_num_contact) 
-    }
+    coviddatahub <- bind_rows(l_coviddatahub_mask_avoid)
+    coviddatahub_num_contact <- bind_rows(l_coviddatahub_num_contact) 
+  }
 }
 
 # write_csv(coviddatahub_num_contact,"data/coviddatahub/coviddatahub_num_contact.csv")
@@ -381,26 +381,26 @@ for (k_file in 1:length(list_files_coviddatahub)) {
 
 # plot yes/no % for masking + avoided X behaviours
 for (k_plot in unique(coviddatahub$name)) {
-
-coviddatahub %>% filter(!is.na(percentage) & name %in% k_plot) %>% 
-  group_by(qweek,cntr) %>% mutate(week_date=min(date)) %>%
-  select(!date) %>% pivot_wider(names_from=value,values_from=percentage) %>%
-  group_by(week_date,qweek,cntr) %>% 
-  summarise(Always=min(Always,na.rm=T),Frequently=min(Frequently,na.rm=T),
-            `Not at all`=min(`Not at all`,na.rm=T),Rarely=min(Rarely,na.rm=T),
-            Sometimes=min(Sometimes,na.rm=T)) %>% 
-  mutate(`always+frequently`=Always+Frequently,`sometimes+rarely+never`=`Not at all`+Rarely+Sometimes) %>%
-  pivot_longer(!c(week_date,qweek,cntr)) %>% filter(name %in% c("always+frequently","sometimes+rarely+never")) %>%
-  mutate(name=factor(name,levels=rev(c("always+frequently","sometimes+rarely+never"))),
-         year_week=paste0(year(week_date),"/w",week(week_date))) %>% 
-ggplot(aes(x=week_date,y=value,fill=name),alpha=2/3) + 
-  geom_bar(stat="identity",width=4) + # geom_line(size=1) + geom_point(shape=21) + #geom_col(width=5)+
-  facet_wrap(~cntr) + scale_x_date(date_breaks="3 month",expand=expansion(0.01,0)) + 
-  scale_y_continuous(expand=expansion(0.01,0)) + scale_fill_manual(values=c("blue","red2")) + labs(fill="") +
-  xlab("") + ylab(paste0(k_plot," (%)")) + theme_bw() + standard_theme + 
-  theme(axis.text.x=element_text(size=10),legend.position="top")
-# mask wearing %
-ggsave(paste0("data/coviddatahub/",k_plot,".png"),width=30,height=22,units="cm")
+  
+  coviddatahub %>% filter(!is.na(percentage) & name %in% k_plot) %>% 
+    group_by(qweek,cntr) %>% mutate(week_date=min(date)) %>%
+    select(!date) %>% pivot_wider(names_from=value,values_from=percentage) %>%
+    group_by(week_date,qweek,cntr) %>% 
+    summarise(Always=min(Always,na.rm=T),Frequently=min(Frequently,na.rm=T),
+              `Not at all`=min(`Not at all`,na.rm=T),Rarely=min(Rarely,na.rm=T),
+              Sometimes=min(Sometimes,na.rm=T)) %>% 
+    mutate(`always+frequently`=Always+Frequently,`sometimes+rarely+never`=`Not at all`+Rarely+Sometimes) %>%
+    pivot_longer(!c(week_date,qweek,cntr)) %>% filter(name %in% c("always+frequently","sometimes+rarely+never")) %>%
+    mutate(name=factor(name,levels=rev(c("always+frequently","sometimes+rarely+never"))),
+           year_week=paste0(year(week_date),"/w",week(week_date))) %>% 
+    ggplot(aes(x=week_date,y=value,fill=name),alpha=2/3) + 
+    geom_bar(stat="identity",width=4) + # geom_line(size=1) + geom_point(shape=21) + #geom_col(width=5)+
+    facet_wrap(~cntr) + scale_x_date(date_breaks="3 month",expand=expansion(0.01,0)) + 
+    scale_y_continuous(expand=expansion(0.01,0)) + scale_fill_manual(values=c("blue","red2")) + labs(fill="") +
+    xlab("") + ylab(paste0(k_plot," (%)")) + theme_bw() + standard_theme + 
+    theme(axis.text.x=element_text(size=10),legend.position="top")
+  # mask wearing %
+  ggsave(paste0("data/coviddatahub/",k_plot,".png"),width=30,height=22,units="cm")
 }
 
 # time courses of masking components (work, publ transp etc)
@@ -411,8 +411,8 @@ coviddatahub %>% filter(grepl("mask",name) & value %in% list("Always",c("Always"
   mutate(name=factor(name,levels=c("mask_outside_home","mask_work","mask_publ_transp",
                                    "mask_grocery","mask_shops","mask_at_home"))) %>%
   # group_by(year_week) %>% complete(cntr,name) %>%
-ggplot(aes(x=week_date,xend=week_date+14,yend=100*percentage,
-           y=100*percentage,color=name,size=grepl("out",name))) +
+  ggplot(aes(x=week_date,xend=week_date+14,yend=100*percentage,
+             y=100*percentage,color=name,size=grepl("out",name))) +
   geom_segment(size=1) + facet_wrap(~cntr) + labs(size="",color="") + # 
   scale_x_date(date_breaks="3 month",expand=expansion(0.01,0)) + #scale_size_manual(values=c(1,1.4),guide="none") +
   scale_color_manual(values=c("black","blue","red","green","orange","grey")) + 
@@ -427,7 +427,7 @@ ggsave(paste0("data/coviddatahub/mask_wearing_",c("always_","always_frequently_"
 
 plot_var=c("mean_num_weighted","median_num_weighted")[2]; plot_var_type=1
 coviddatahub_num_contact %>% filter(grepl(c("contact","left_home")[plot_var_type],name) & !cntr %in% "australia") %>%
-ggplot(aes(x=date,y=get(plot_var),fill=name),alpha=2/3) + 
+  ggplot(aes(x=date,y=get(plot_var),fill=name),alpha=2/3) + 
   geom_bar(stat="identity",width=3) + # geom_line(size=1) + geom_point(shape=21) + # geom_col(width=5) +
   facet_wrap(~cntr) + scale_x_date(date_breaks="3 month",expand=expansion(0.01,0)) + 
   scale_y_continuous(expand=expansion(0.01,0)) + scale_fill_manual(values=c("blue","red2")) + labs(fill="") +
@@ -437,7 +437,7 @@ ggplot(aes(x=date,y=get(plot_var),fill=name),alpha=2/3) +
 ggsave(paste0("data/coviddatahub/",ifelse(plot_var_type==1,"contacts_","left_home_"),plot_var,".png"),
        width=32,height=20,units="cm")
 
-  
+
 ### ### ### ### ### ### ### ### ### ### ### ### 
 # single country (France)
 # coviddatahub_france <- read_csv("../coviddatahub/france.csv") %>% 
@@ -495,7 +495,7 @@ google_mobility <- read_csv("mobility_report_europe.csv") %>%
 
 google_mobility %>% pivot_longer(!c(date,country)) %>% group_by(name,country) %>% 
   mutate(smooth_value=roll_mean(value,7,align="center",fill=NA,na.rm=T)) %>%
-ggplot(aes(x=date,y=smooth_value,color=name)) + geom_line() + 
+  ggplot(aes(x=date,y=smooth_value,color=name)) + geom_line() + 
   scale_x_date(date_breaks="2 month",expand=expansion(0.01,0)) +
   geom_hline(yintercept=0,size=1/2) + 
   facet_wrap(~country,scales="free_y") + xlab("") + theme_bw() + standard_theme
