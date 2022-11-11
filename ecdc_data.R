@@ -1,8 +1,8 @@
 # settings
 rm(list=ls())
-library(tidyverse); library(wpp2019); library(RcppRoll); library(lubridate); # library(here)
+library(tidyverse); library(wpp2019); library(RcppRoll); library(lubridate); library(qs) # library(here)
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
-source("fcns.R"); data(pop)
+source("fcns/fcns.R"); data(pop)
 # standard_theme<-theme(plot.title=element_text(hjust=0.5,size=16),
 #   axis.text.x=element_text(size=9,angle=90,vjust=1/2),axis.text.y=element_text(size=9),
 #   axis.title=element_text(size=14), text=element_text(family="Calibri"))
@@ -390,14 +390,15 @@ for (k_plot in unique(coviddatahub$name)) {
               `Not at all`=min(`Not at all`,na.rm=T),Rarely=min(Rarely,na.rm=T),
               Sometimes=min(Sometimes,na.rm=T)) %>% 
     mutate(`always+frequently`=Always+Frequently,`sometimes+rarely+never`=`Not at all`+Rarely+Sometimes) %>%
-    pivot_longer(!c(week_date,qweek,cntr)) %>% filter(name %in% c("always+frequently","sometimes+rarely+never")) %>%
+    pivot_longer(!c(week_date,qweek,cntr)) %>% 
+    filter(name %in% c("always+frequently","sometimes+rarely+never")) %>%
     mutate(name=factor(name,levels=rev(c("always+frequently","sometimes+rarely+never"))),
            year_week=paste0(year(week_date),"/w",week(week_date))) %>% 
-    ggplot(aes(x=week_date,y=value,fill=name),alpha=2/3) + 
+ggplot(aes(x=week_date,y=value,fill=name),alpha=2/3) + 
     geom_bar(stat="identity",width=4) + # geom_line(size=1) + geom_point(shape=21) + #geom_col(width=5)+
     facet_wrap(~cntr) + scale_x_date(date_breaks="3 month",expand=expansion(0.01,0)) + 
-    scale_y_continuous(expand=expansion(0.01,0)) + scale_fill_manual(values=c("blue","red2")) + labs(fill="") +
-    xlab("") + ylab(paste0(k_plot," (%)")) + theme_bw() + standard_theme + 
+    scale_y_continuous(expand=expansion(0.01,0)) + scale_fill_manual(values=c("blue","red2")) + 
+    xlab("") + ylab(paste0(k_plot," (%)")) + theme_bw() + standard_theme + labs(fill="") +
     theme(axis.text.x=element_text(size=10),legend.position="top")
   # mask wearing %
   ggsave(paste0("data/coviddatahub/",k_plot,".png"),width=30,height=22,units="cm")
@@ -427,7 +428,7 @@ ggsave(paste0("data/coviddatahub/mask_wearing_",c("always_","always_frequently_"
 
 plot_var=c("mean_num_weighted","median_num_weighted")[2]; plot_var_type=1
 coviddatahub_num_contact %>% filter(grepl(c("contact","left_home")[plot_var_type],name) & !cntr %in% "australia") %>%
-  ggplot(aes(x=date,y=get(plot_var),fill=name),alpha=2/3) + 
+ggplot(aes(x=date,y=get(plot_var),fill=name),alpha=2/3) + 
   geom_bar(stat="identity",width=3) + # geom_line(size=1) + geom_point(shape=21) + # geom_col(width=5) +
   facet_wrap(~cntr) + scale_x_date(date_breaks="3 month",expand=expansion(0.01,0)) + 
   scale_y_continuous(expand=expansion(0.01,0)) + scale_fill_manual(values=c("blue","red2")) + labs(fill="") +
