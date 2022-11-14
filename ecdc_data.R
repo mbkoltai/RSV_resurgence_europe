@@ -222,11 +222,13 @@ OxCGRT_input <- fcn_get_OxCGRT(
 
 # plot
 OxCGRT_input %>% filter(NPI_on==1 & date>=as.Date("2020-02-25") & date<as.Date("2021-12-01")) %>% 
-  select(c(date,CountryName,StringencyIndex,`C1_School closing`)) %>% mutate(StringencyIndex=StringencyIndex/100,
-                                                                             `C1_School closing`=`C1_School closing`/max(OxCGRT_input$`C1_School closing`)) %>% 
+  select(c(date,CountryName,StringencyIndex,`C1_School closing`)) %>% 
+  mutate(StringencyIndex=StringencyIndex/100,
+                  `C1_School closing`=`C1_School closing`/max(OxCGRT_input$`C1_School closing`)) %>% 
   pivot_longer(!c(date,CountryName)) %>%
   ggplot() + geom_line(aes(x=date,y=value,color=name)) + facet_wrap(~CountryName) + 
-  scale_color_manual(values=c("black","blue")) + scale_x_date(date_breaks="2 month",expand=expansion(0.01,0)) + 
+  scale_color_manual(values=c("black","blue")) + 
+  scale_x_date(date_breaks="2 month",expand=expansion(0.01,0)) + 
   geom_vline(data=resurgence_start %>% 
                rename(CountryName=RegionName),aes(xintercept=date_resurg),color="red") + 
   geom_vline(xintercept=as.Date("2021-01-01"),color="grey") +

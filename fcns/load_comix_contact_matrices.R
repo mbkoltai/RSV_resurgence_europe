@@ -231,7 +231,9 @@ all_comix_matr %>% filter(contact %in% c("[0,2)","[2,5)","[5,18)","18+") &
 # ggsave(paste0("data/comix/contact_matrs/linerange/all_cntrs_log10.png"), width=32,height=18,units="cm")
 ggsave(paste0("data/comix/contact_matrs/linerange/all_cntrs.png"), width=32,height=18,units="cm")
 
-### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### 
+### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### 
+### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### 
+### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### 
 # by downloading raw data from zenodo 
 # we don't need to do this for thosecountries where there's data through the shiny app
 # @ https://github.com/lwillem/socrates_rshiny can create the matrices
@@ -250,6 +252,7 @@ comix_url_list <- c(uk="https://zenodo.org/record/6542524",it="https://zenodo.or
 # participant_common: https://zenodo.org/record/6362898/files/CoMix_es_participant_common.csv?download=1
 # sday: https://zenodo.org/record/6362898/files/CoMix_es_sday.csv?download=1
 
+# LOOP to construct contact matrices
 for (k_url in which(names(comix_url_list) %in% c("uk","nl","be"))){
 
   base_url=paste0(array(comix_url_list[k_url]),"/files/CoMix_",names(comix_url_list[k_url]),"_")
@@ -359,7 +362,7 @@ for (k_url in which(names(comix_url_list) %in% c("uk","nl","be"))){
   message(paste0("DONE WITH: ",cntr_name))
   l_comix_aggr[[k_url]] = comix_aggr
   if (k_url==length(comix_url_list)) {comix_aggr_all = bind_rows(l_comix_aggr)}
-}
+} # end of loop for multiple countries
 
 
 # there are some age groups w only little data
@@ -370,19 +373,48 @@ agegrp_sample_size <- comix_aggr %>% filter(name %in% "all" & metric %in% "value
   mutate(value=ifelse(grepl("cnt",name),n_cnt,n_part)) %>% select(!c(n_part,n_cnt)) %>% distinct()
 
 sel_cnt_agegrps=c("0-1","1-4","5-9","10-14","15-19","20-24","25-29","30-34","35-39","40-44",
-                  "45-49","50-54","55-59","60-64","65-69","70-74","75-79")
+                  "45-49","50-54","55-59","60-64","65-69","70-74","75-79","80-84","85-100")
+agegroup_classes=c("[0-1)","[1-4]","[5-19]","[20+]")
 # plot contact matrix changes in time
-comix_aggr %>% filter(name %in% "all" & metric %in% "value" & 
-                      !(part_age %in% (agegrp_sample_size %>% filter(value<100))$agegrp) & 
-                        cnt_age_group %in% sel_cnt_agegrps) %>% 
+comix_aggr %>% ungroup() %>% filter(name %in% "all" & metric %in% "value_phys" & # 
+    !(part_age %in% c(c("18-19","5-11","25-34","35-44"),"45-54","Under 1") ) & 
+      cnt_age_group %in% sel_cnt_agegrps) %>% # (agegrp_sample_size %>% filter(value<100))$agegrp
+  # mutate(cnt_agegrp_class=agegroup_classes[findInterval(as.numeric(cnt_age_group),vec=c(1,2,3,6))],
+  #        cnt_agegrp_class=factor(cnt_agegrp_class,levels=unique(cnt_agegrp_class))) %>%
+  # group_by(date,cnt_agegrp_class,part_age) %>% summarise(value=sum(median),wave=unique(wave)) %>% ungroup() %>%
+  group_by(wave,cnt_age_group,part_age) %>% summarise(value=mean(mean),date=mean(date)) %>%
+  group_by(wave,part_age) %>% summarise(mean_date=mean(date),value=sum(value)) %>% # mutate(mean_date=mean(date)) %>%
   # & date<=as.Date("2020-04-16")
-ggplot() + facet_wrap(~part_age) + # scales="free_x"
+ggplot() + facet_wrap(~part_age,scales="free_y") + # 
   # geom_area(aes(x=date,y=value_median,fill=cnt_age_group),position="stack") + # ,size=1/4
-  geom_bar(aes(x=date,y=value_median,fill=cnt_age_group),stat="identity",color=NA) + # width=1/5,
-  scale_x_date(expand=expansion(0.02,0)) + scale_y_continuous(expand=expansion(0.02,0)) + 
+  # geom_bar(aes(x=mean_date,y=value,fill=cnt_agegrp_class),stat="identity",width=1,color=NA) + #
+  # geom_bar(aes(x=mean_date,y=value),stat="identity",width=4,color=NA) + # 
+  geom_point(aes(x=mean_date,y=value)) + # geom_line(aes(x=mean_date,y=value)) + # ,color=cnt_age_grou
+  scale_x_date(expand=expansion(0.02,0),date_breaks="2 month") + scale_y_continuous(expand=expansion(0.02,0)) + 
   xlab("") + ylab("# of daily contacts") + labs(color="contact age",fill="contact age") +
-  theme_bw() + standard_theme + theme(strip.text=element_text(size=13),panel.grid.minor=element_blank(),
-                                      panel.grid.major.x=element_blank()) # ,legend.position="top"
+  theme_bw() + standard_theme + theme(strip.text=element_text(size=13)) 
+# ,panel.grid.minor=element_blank(),legend.position="top"
 # save
 ggsave(paste0("data/comix/raw_data/contact_matr_uk_barplot_median.png"),width=33,height=22,units="cm")
 
+# from https://zenodo.org/record/4677018
+uk_ld_inds=lapply(list("Lockdown 1"=c("23/03/2020","03/06/2020"),
+                "Lockdown 1 easing"=c("04/06/2020","29/07/2020"),
+                "Reduced restrictions"=c("30/07/2020","03/09/2020"),
+                "Schools open"=c("04/09/2020","26/10/2020"),
+                "Lockdown 2"=c("05/11/2020","02/12/2020"),
+                "Lockdown 2 easing"=c("03/12/2020","19/12/2020"),
+                "Christmas"=c("20/12/2020","02/01/2021"),
+                "Lockdown 3"=c("05/01/2021","08/03/2021"),
+                "Lockdown 3 with schools open"=c("08/03/2021","16/03/2021")),dmy)
+uk_ld_periods <- lapply(uk_ld_inds, function(x) seq.Date(from=x[1],to=x[2],by="day"))
+
+uk_contact_matrices_9_periods <- read_csv("data/comix/munday2021/contact_matrices_9_periods.csv")
+# uk_cm_ld1 = qread("data/comix/munday2021/1_Lockdown_1_cms.qs")
+
+# build dataframe
+# lapply(1:length(uk_ld_periods), function(x) 
+#   data.frame(Period=paste0(x,". ",gsub(" open","",gsub("with","+",names(uk_ld_periods[x])))),
+#              date=uk_ld_periods[[x]])) %>% bind_rows()
+left_join(data.frame(t(uk_ld_inds %>% bind_rows() )) %>% mutate(period=names(uk_ld_inds), n_period=) , 
+  uk_contact_matrices_9_periods, by="Period")
