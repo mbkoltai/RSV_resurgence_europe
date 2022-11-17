@@ -365,8 +365,10 @@ for (k_url in which(names(comix_url_list) %in% c("uk","nl","be"))){
 } # end of loop for multiple countries
 
 
+comix_aggr_uk <- qread("data/comix/raw_data/comix_aggr_uk.csv")
+
 # there are some age groups w only little data
-agegrp_sample_size <- comix_aggr %>% filter(name %in% "all" & metric %in% "value") %>%
+agegrp_sample_size <- comix_aggr_uk %>% filter(name %in% "all" & metric %in% "value") %>%
   group_by(part_age) %>% mutate(n_part=n()) %>% group_by(cnt_age_group) %>% mutate(n_cnt=n()) %>%
   select(cnt_age_group,part_age,n_part,n_cnt) %>% 
   pivot_longer(c(cnt_age_group,part_age)) %>% distinct() %>% rename(agegrp=value) %>%
@@ -376,28 +378,38 @@ sel_cnt_agegrps=c("0-1","1-4","5-9","10-14","15-19","20-24","25-29","30-34","35-
                   "45-49","50-54","55-59","60-64","65-69","70-74","75-79","80-84","85-100")
 agegroup_classes=c("[0-1)","[1-4]","[5-19]","[20+]")
 # plot contact matrix changes in time
-comix_aggr %>% ungroup() %>% filter(name %in% "all" & metric %in% "value_phys" & # 
-    !(part_age %in% c(c("18-19","5-11","25-34","35-44"),"45-54","Under 1") ) & 
+comix_aggr_uk %>% ungroup() %>% filter(name %in% "all" & metric %in% "value_phys" & # 
+    !(part_age %in% c("18-19","5-11","25-34","35-44","45-54","Under 1") ) &
       cnt_age_group %in% sel_cnt_agegrps) %>% # (agegrp_sample_size %>% filter(value<100))$agegrp
-  # mutate(cnt_agegrp_class=agegroup_classes[findInterval(as.numeric(cnt_age_group),vec=c(1,2,3,6))],
-  #        cnt_agegrp_class=factor(cnt_agegrp_class,levels=unique(cnt_agegrp_class))) %>%
-  # group_by(date,cnt_agegrp_class,part_age) %>% summarise(value=sum(median),wave=unique(wave)) %>% ungroup() %>%
-  group_by(wave,cnt_age_group,part_age) %>% summarise(value=mean(mean),date=mean(date)) %>%
-  group_by(wave,part_age) %>% summarise(mean_date=mean(date),value=sum(value)) %>% # mutate(mean_date=mean(date)) %>%
-  # & date<=as.Date("2020-04-16")
-ggplot() + facet_wrap(~part_age,scales="free_y") + # 
-  # geom_area(aes(x=date,y=value_median,fill=cnt_age_group),position="stack") + # ,size=1/4
-  # geom_bar(aes(x=mean_date,y=value,fill=cnt_agegrp_class),stat="identity",width=1,color=NA) + #
-  # geom_bar(aes(x=mean_date,y=value),stat="identity",width=4,color=NA) + # 
-  geom_point(aes(x=mean_date,y=value)) + # geom_line(aes(x=mean_date,y=value)) + # ,color=cnt_age_grou
+  mutate(cnt_agegrp_class=agegroup_classes[findInterval(as.numeric(cnt_age_group),vec=c(1,2,3,6))],
+         cnt_agegrp_class=factor(cnt_agegrp_class,levels=unique(cnt_agegrp_class))) %>% ungroup() %>%
+  group_by(date,part_age,cnt_agegrp_class) %>% # weekly averages
+  summarise(value=sum(mean)) %>% mutate(year_month=paste0(year(date),"-",month(date))) %>% ungroup() %>%
+  group_by(year_month,part_age,cnt_agegrp_class) %>% summarise(value=mean(value),date=mean(date)) %>%
+  ungroup() %>% group_by(year_month,part_age) %>% mutate(mean_date=mean(date)) %>%
+  # moving average
+  group_by(part_age,cnt_agegrp_class) %>% mutate(smooth_value=roll_mean(value,n=3,fill=NA,align="center")) %>%
+ggplot() + facet_wrap(~part_age) + # ,scales="free_y"
+  geom_col(aes(x=mean_date,y=value,fill=cnt_agegrp_class),color=NA,position="stack",width=6) + #
+  geom_area(aes(x=mean_date,y=smooth_value,color=cnt_agegrp_class),fill=NA) +
   scale_x_date(expand=expansion(0.02,0),date_breaks="2 month") + scale_y_continuous(expand=expansion(0.02,0)) + 
   xlab("") + ylab("# of daily contacts") + labs(color="contact age",fill="contact age") +
-  theme_bw() + standard_theme + theme(strip.text=element_text(size=13)) 
-# ,panel.grid.minor=element_blank(),legend.position="top"
+  theme_bw() + standard_theme + theme(strip.text=element_text(size=13))
 # save
-ggsave(paste0("data/comix/raw_data/contact_matr_uk_barplot_median.png"),width=33,height=22,units="cm")
+# ggsave(paste0("data/comix/raw_data/contact_matr_uk_barplot_median.png"),width=33,height=22,units="cm")
+ggsave(paste0("data/comix/raw_data/contact_matr_uk_barplot_broadage_contact.png"),width=33,height=22,units="cm")
 
+# group_by(wave,part_age,cnt_agegrp_class) %>% 
+# summarise(value=mean(value),date=mean(date),min_date=min(date)) %>%
+# # group_by(wave,part_age) %>% summarise(mean_date=mean(date),value=sum(value)) %>%
+# group_by(wave,part_age) %>% mutate(mean_date=mean(date),min_date=min(date)) %>% 
+# mutate(mean_date=mean(date)) %>% # & date<=as.Date("2020-04-16")
+
+### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
 # from https://zenodo.org/record/4677018
+uk_contact_matrices_9_periods <- read_csv("data/comix/munday2021/contact_matrices_9_periods.csv") %>%
+  select(!`...1`)
+# period
 uk_ld_inds=lapply(list("Lockdown 1"=c("23/03/2020","03/06/2020"),
                 "Lockdown 1 easing"=c("04/06/2020","29/07/2020"),
                 "Reduced restrictions"=c("30/07/2020","03/09/2020"),
@@ -406,15 +418,67 @@ uk_ld_inds=lapply(list("Lockdown 1"=c("23/03/2020","03/06/2020"),
                 "Lockdown 2 easing"=c("03/12/2020","19/12/2020"),
                 "Christmas"=c("20/12/2020","02/01/2021"),
                 "Lockdown 3"=c("05/01/2021","08/03/2021"),
-                "Lockdown 3 with schools open"=c("08/03/2021","16/03/2021")),dmy)
-uk_ld_periods <- lapply(uk_ld_inds, function(x) seq.Date(from=x[1],to=x[2],by="day"))
+                "Lockdown 3 + schools"=c("08/03/2021","16/03/2021")),dmy)
+names(uk_ld_inds)=unique(uk_contact_matrices_9_periods$Period)
+# create full dataframe 
+uk_contact_matrices_9_periods <- uk_contact_matrices_9_periods %>% rowwise() %>%
+  mutate(date_start=uk_ld_inds[[which(names(uk_ld_inds) %in% Period)]][1],
+         date_stop=uk_ld_inds[[which(names(uk_ld_inds) %in% Period)]][2],
+         mean_date=mean(c(date_start,date_stop)),
+         period_length=as.numeric(abs(date_start-date_stop))) %>% ungroup() %>%
+  mutate(`Contact age`=factor(`Contact age`,levels=unique(`Contact age`))) %>% ungroup() %>% 
+  group_by(`Participant age`,Period) %>% mutate(cumul_contact=cumsum(`mean contacts`))
+uk_contact_matrices_9_periods$`Participant age`=factor(uk_contact_matrices_9_periods$`Participant age`,
+                                    levels=unique(uk_contact_matrices_9_periods$`Participant age`))
+ylim_dummy = uk_contact_matrices_9_periods %>% ungroup() %>% select(`Participant age`) %>% distinct() %>% 
+  mutate(mean_date=as.Date("2020-04-01"),`mean contacts`=c(rep(15,3),rep(6,6)))
+# plot absolute numbers
+uk_contact_matrices_9_periods %>%
+ggplot() + facet_wrap(~`Participant age`,scales="free_y") + 
+  # geom_segment(aes(x=date_start,xend=date_stop,y=cumul_contact,yend=cumul_contact,color=`Contact age`)) + 
+  geom_bar(aes(x=mean_date,y=`mean contacts`,fill=`Contact age`,width=period_length*3/4),
+           stat="identity",color="black",size=1/2,position=position_stack(reverse=TRUE)) +
+  geom_point(data=ylim_dummy,aes(x=mean_date,y=`mean contacts`),color=NA) +
+  geom_vline(aes(xintercept=date_start),size=1/3,linetype="dashed") + xlab("") + 
+  # geom_vline(aes(xintercept=date_stop),size=1/3,linetype="dashed") +
+  scale_x_date(expand=expansion(0.02),breaks=unique(uk_contact_matrices_9_periods$mean_date)) +
+  scale_y_continuous(expand=expansion(0.02)) + # date_breaks="1 month",
+  theme_bw() + standard_theme + theme(strip.text=element_text(size=15),axis.text.x=element_text(size=14),
+                                      axis.text.y=element_text(size=14))
+# save
+ggsave(paste0("data/comix/munday2021/contact_matr_uk_paneldates.png"),width=33,height=22,units="cm")
 
-uk_contact_matrices_9_periods <- read_csv("data/comix/munday2021/contact_matrices_9_periods.csv")
-# uk_cm_ld1 = qread("data/comix/munday2021/1_Lockdown_1_cms.qs")
+# plot shares of contact age groups
+uk_contact_matrices_9_periods %>% ungroup() %>% group_by(`Participant age`,Period) %>%
+  mutate(share_contacts=(`mean contacts`/sum(`mean contacts`)),cumul_share=cumsum(share_contacts)) %>% # 
+ggplot() + facet_wrap(~`Participant age`,scales="free_y") + 
+  geom_area(aes(x=mean_date,y=share_contacts,fill=`Contact age`),color="black",size=1/3,
+            position=position_stack(reverse=TRUE)) +
+  geom_point(aes(x=mean_date,y=cumul_share,group=`Contact age`),size=4/5,shape=21) + # 
+  scale_x_date(breaks=unique(uk_contact_matrices_9_periods$mean_date), # date_breaks="1 month",
+               expand=expansion(0.01)) + scale_y_continuous(expand=expansion(0.02)) + 
+  xlab("") + ylab("% of all contacts") + theme_bw() + standard_theme + 
+  theme(strip.text=element_text(size=15)) # ,axis.text.x=element_text(size=13),axis.text.y=element_text(size=14)
+# save
+ggsave(paste0("data/comix/munday2021/contact_matr_uk_shares.png"),width=33,height=22,units="cm")
 
-# build dataframe
-# lapply(1:length(uk_ld_periods), function(x) 
-#   data.frame(Period=paste0(x,". ",gsub(" open","",gsub("with","+",names(uk_ld_periods[x])))),
-#              date=uk_ld_periods[[x]])) %>% bind_rows()
-left_join(data.frame(t(uk_ld_inds %>% bind_rows() )) %>% mutate(period=names(uk_ld_inds), n_period=) , 
-  uk_contact_matrices_9_periods, by="Period")
+### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
+# mean # contacts for entire period
+# subset for plot
+mean_cont_plot = read_csv("data/comix/2022-03-02_bs_means_2w_open.csv") %>% 
+  filter(part_region %in% "All" & setting %in% "All" & 
+          !(part_age_group %in% c("All-adults","All","5-17","60+","18-59")))
+# order
+x_age=as.numeric(sapply(sapply(unique(mean_cont_plot$part_age_group), strsplit,"-|\\+"),`[[`,1))
+mean_cont_plot$part_age_group=factor(mean_cont_plot$part_age_group,
+                                     levels=unique(mean_cont_plot$part_age_group)[order(x_age)])
+ylim_dummy = mean_cont_plot %>% ungroup() %>% select(part_age_group) %>% distinct() %>% 
+  arrange(part_age_group) %>% mutate(mid_date=as.Date("2020-04-01"),mean=c(rep(18,3),rep(7,6)))
+# plot
+mean_cont_plot %>% ggplot() + facet_wrap(~part_age_group,scales = "free_y") + 
+  geom_line(aes(x=mid_date,y=mean)) + geom_ribbon(aes(x=mid_date,ymin=lci,ymax=uci),alpha=1/4) +
+  geom_point(data=ylim_dummy,aes(x=mid_date,y=mean),color=NA) +
+  scale_x_date(expand=expansion(0.01,0),date_breaks="2 month") + scale_y_continuous(expand=expansion(0.01,0)) + 
+  xlab("") + ylab("mean # contacts") + theme_bw() + standard_theme + theme(strip.text=element_text(size=15))
+# save
+ggsave(paste0("data/comix/england_mean_contacts_partipage_2020_2022.png"),width=33,height=22,units="cm")
