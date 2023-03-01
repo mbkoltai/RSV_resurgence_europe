@@ -3,16 +3,18 @@
 setwd("data/comix/socrates_rshiny/")
 source('R/socrates_main.R'); source('R/load_config_base.R') # re-load settings (without CoMix-based selection)
 detach("package:wpp2015",unload=TRUE); detach("package:plyr") 
-library(plyr); library(dplyr)
+library(plyr); library(dplyr); library(conflicted); conflict_prefer("mutate", "dplyr")
 # setwd("../../../")
 comix_opt_country=opt_country[c(sapply("CoMix", grepl,names(opt_country)))]
 l_matrix_out_recipr=list(); l_demogr=list(); l_inner=list()
+l_mm=list()
 
-for (k_cntr in 1:length(comix_opt_country)) { # 
+# loop through cntrs
+for (k_cntr in 1:length(comix_opt_country)) {
   cntr_name = unlist(strsplit(names(comix_opt_country[k_cntr])," "))[1]
   for (k_wave in 1:10){
 # aggregate the input parameters in a list
-input <- list(age_breaks_num = c(0,2,5,18),
+input <- list(age_breaks_num = c(0,6,18,65), # c(0,2,5,18)
               country     = comix_opt_country[k_cntr],
               daytype     = opt_day_type[1],
               touch       = opt_touch[[1]],
@@ -38,7 +40,7 @@ temp_survey_obj <- get_survey_object(country,daytype,touch,duration,gender,cnt_l
                                 bool_suppl_professional_cnt=TRUE,bool_hhmatrix_selection=FALSE,
                                 wave=wave) 
   wave_string=sort(unique(temp_survey_obj$participants$wave) )
-  }
+}
 
 # get survey object
 if ((wave<=length(wave_string))|wave %in% "All"){
@@ -58,7 +60,7 @@ for (k_l in 1:50) {
                            estimated.contact.age='sample',# estimated.participant.age = 'sample',
                            weigh.dayofweek="Weigh by week/weekend" %in% cnt_matrix_features, #TRUE,
                            weigh.age="Weigh by age" %in% cnt_matrix_features,
-                           weight.threshold=weight_threshold)$matrix,col.names="cont") %>% 
+                           weight.threshold=weight_threshold)$matrix, col.names="cont") %>% 
     mutate(particip=row_number()) %>% pivot_longer(!c(particip),names_to="contact") %>%
     mutate(particip=unique(contact)[particip],k_l=k_l)
   # mm %>% pivot_wider(values_from=value,names_from=contact)
@@ -81,14 +83,20 @@ l_inner[[k_wave]] <- mean_c_m %>%
 } # loop for waves
   l_matrix_out_recipr[[k_cntr]] <- l_inner %>% bind_rows()
   # names(l_matrix_out_recipr[[k_cntr]]) <- names(comix_opt_country[k_cntr])
-  }
+} # loop for cntrs
 ### end of loop
+
 all_comix_matr=bind_rows(l_matrix_out_recipr) %>% distinct() %>% relocate(contact,.after=particip) %>%
   mutate(wave_year_month=ifelse(wave %in% "All","All",substr(start=4,stop=10,wave)) ) # ,
          # wave_year_month=factor(wave_year_month,levels=sort(unique(all_comix_matr$wave_year_month))))
-# write_csv(all_comix_matr,"data/comix/all_comix_matr_4agegroups.csv")
+# SAVE
+# setwd("/home/lshmk17/Desktop/research/models/RSV_model/transmission/RSV_resurgence_europe")
+# write_csv(all_comix_matr,"data/comix/contact_matrs_socrates/all_comix_matr_5agegroups.csv")
+
 
 ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### 
+
+sel_age_grps=c("[0,6)","[6,18)","[18,65)","65+") # # c("[0,2)","[2,5)","[5,18)","18+")
 
 # HEATMAP
 # plot by country
@@ -96,9 +104,9 @@ for (cntr_name in unique(all_comix_matr$country)) {
 # cntr_name=unique(all_comix_matr$country)[k_cntr]
 # heatmap
 all_comix_matr %>% filter(country %in% cntr_name & 
-                            contact %in% c("[0,2)","[2,5)","[5,18)","18+") & 
-                            particip %in% c("[0,2)","[2,5)","[5,18)","18+")) %>%
-  mutate(wave=factor(wave,levels=unique(wave))) %>%
+                            contact %in% sel_age_grps & particip %in% sel_age_grps ) %>%
+  mutate(particip=factor(particip,levels=sel_age_grps),contact=factor(contact,levels=sel_age_grps),
+    wave=factor(wave,levels=unique(wave))) %>%
 ggplot(aes(particip,contact,fill=mean)) + 
     geom_tile() + geom_text(aes(label=round(mean,2),color=mean>8),size=4) +
     scale_color_manual(values=c("grey","black"),guide="none") + 
@@ -107,13 +115,15 @@ ggplot(aes(particip,contact,fill=mean)) +
     facet_wrap(~wave) + ggtitle(cntr_name) + theme_bw() + standard_theme + 
     theme(panel.grid.major=element_blank())
 # ggsave
-ggsave(paste0("data/comix/contact_matrs/heatmaps/by_cntr/",cntr_name,".png"),width=33,height=22,units="cm")
+ggsave(paste0("data/comix/contact_matrs_socrates/heatmaps/by_cntr/",cntr_name,".png"),width=33,height=22,units="cm")
 }
 
 # plot all together
-all_comix_matr %>% filter(contact %in% c("[0,2)","[2,5)","[5,18)","18+") & 
-                          particip %in% c("[0,2)","[2,5)","[5,18)","18+")) %>%
-  group_by(country) %>% mutate(wave_nr=ifelse(wave %in% "All",wave,as.numeric(factor(wave)))) %>%
+all_comix_matr %>% filter(contact %in% sel_age_grps & particip %in% sel_age_grps) %>%
+  group_by(country) %>% 
+  mutate(particip=factor(particip,levels=sel_age_grps),
+         contact=factor(contact,levels=sel_age_grps),
+         wave_nr=ifelse(wave %in% "All",wave,as.numeric(factor(wave)))) %>%
 ggplot(aes(particip,contact,fill=mean)) + facet_grid(wave_nr~country) + 
   geom_tile() + geom_text(aes(label=round(mean,2),color=mean>8),size=2.75) +
   scale_color_manual(values=c("grey","black"),guide="none") + 
@@ -122,7 +132,7 @@ ggplot(aes(particip,contact,fill=mean)) + facet_grid(wave_nr~country) +
   ggtitle(cntr_name) + theme_bw() + standard_theme + 
   theme(panel.grid.major=element_blank())
 # save
-ggsave("data/comix/contact_matrs/heatmaps/all_comix_matr.png",width=33,height=22,units="cm")
+ggsave("data/comix/contact_matrs_socrates/heatmaps/all_comix_matr.png",width=33,height=22,units="cm")
 
 ### ### ### ### ### ### ### ### ### ### ### ###
 # plot by wave
@@ -130,10 +140,9 @@ flag_month_aggreg=F
 for (wave_yr_month in unique(all_comix_matr$wave_year_month)) {
   # heatmap
   df_plot <- all_comix_matr %>% 
-    filter(wave_year_month %in% wave_yr_month & 
-           contact %in% c("[0,2)","[2,5)","[5,18)","18+") & 
-           particip %in% c("[0,2)","[2,5)","[5,18)","18+")) %>%
-    mutate(cntr_wave=paste0(country,"_",wave)) 
+    filter(wave_year_month %in% wave_yr_month & contact %in% sel_age_grps & particip %in% sel_age_grps) %>%
+    mutate(particip=factor(particip,levels=sel_age_grps),
+           contact=factor(contact,levels=sel_age_grps), cntr_wave=paste0(country,"_",wave)) 
   
     # take the mean values per month
   if (flag_month_aggreg){
@@ -148,8 +157,8 @@ df_plot %>% ggplot(aes(particip,contact,fill=mean)) + facet_wrap(~country) +
     ggtitle(wave_yr_month) + theme_bw() + standard_theme + 
     theme(panel.grid.major=element_blank(),strip.text=element_text(size=13))
   # ggsave
-  ggsave(paste0("data/comix/contact_matrs/by_wave_month_aggreg/",gsub("-","_",wave_yr_month),".png"),
-         width=33,height=22,units="cm")
+  ggsave(paste0("data/comix/contact_matrs_socrates/heatmaps/by_wave_month_aggreg/",
+                gsub("-","_",wave_yr_month),".png"),width=33,height=22,units="cm")
   message(wave_yr_month)
 }
 
@@ -157,9 +166,11 @@ df_plot %>% ggplot(aes(particip,contact,fill=mean)) + facet_wrap(~country) +
 # bar/segment plot
 for (cntr_name in unique(all_comix_matr$country)) {
   df_plot <- all_comix_matr %>% filter(country %in% cntr_name & # !(wave %in% "All") &
-                            contact %in% c("[0,2)","[2,5)","[5,18)","18+") & 
-                            particip %in% c("[0,2)","[2,5)","[5,18)","18+") & 
-                            !is.na(mean)) %>% rename(`age of participant`=particip) %>% 
+                            contact %in% sel_age_grps & particip %in% sel_age_grps & 
+                            !is.na(mean)) %>% 
+              mutate(particip=factor(particip,levels=sel_age_grps),
+                     contact=factor(contact,levels=sel_age_grps)) %>%
+    rename(`age of participant`=particip) %>% 
     rowwise() %>% mutate(wave=(ifelse(wave %in% "All",wave,
                           substr(x=wave,4,nchar(wave)-ifelse(cntr_name %in% "Belgium",0,5)))))
 n_wave=length(unique(df_plot$wave))
@@ -185,57 +196,61 @@ ggplot() + facet_wrap(~`age of participant`,labeller=label_both) + # scales="fre
         panel.grid.minor=element_blank(),panel.grid.major.x=element_blank())
 message(cntr_name)
 # save
-ggsave(paste0(c("data/comix/contact_matrs/linerange/fixed_x/",
-                "data/comix/contact_matrs/barplots/fixed_x/")[plot_type],cntr_name,".png"), 
+ggsave(paste0(c("data/comix/contact_matrs_socrates/linerange/fixed_x/",
+                "data/comix/contact_matrs_socrates/barplots/fixed_x/")[plot_type],cntr_name,".png"), 
        width=25,height=18,units="cm")
 }
 
 ### ### ### ### ### ### ### ### ### ### ### ###
 # all on one plot
 # barplot
-all_comix_matr %>% filter(contact %in% c("[0,2)","[2,5)","[5,18)","18+") & 
-                            particip %in% c("[0,2)","[2,5)","[5,18)","18+") & 
+sel_var=c("mean","median")[2]
+all_comix_matr %>% filter(contact %in% sel_age_grps & particip %in% sel_age_grps & 
                             !is.na(mean) & !wave %in% "All") %>% 
-  mutate(particip=paste0(particip," (part. age)")) %>% rename(`age of participant`=particip) %>% 
+  mutate(# particip=paste0(particip," (part. age)"),
+         particip=factor(particip,levels=sel_age_grps),
+         contact=factor(contact,levels=sel_age_grps)) %>% 
+  rename(`age of participant`=particip) %>% 
   rowwise() %>% mutate(wave_date=(ifelse(wave %in% "All",wave,
               substr(x=wave,4,nchar(wave)-ifelse(country %in% "Belgium",0,5)))))  %>% 
 ggplot() + facet_grid(`age of participant`~country,scales="free_x") + # scales="free_x"
-  geom_bar(aes(x=as.Date(wave_date),y=mean,fill=contact),stat="identity",size=1/4,color="black",width=10) +
+  geom_bar(aes(x=as.Date(wave_date),y=get(sel_var),fill=contact),stat="identity",size=1/4,color="black",width=10) +
   # geom_linerange(aes(x=mean,ymin=as.Date(wave)-5,ymax=as.Date(wave)+5,
   #                    color=contact),size=1.5) + coord_flip() + # ,size=2
-  scale_x_date(expand=expansion(0.02,0)) + scale_y_continuous(expand=expansion(0.02,0)) + 
+  scale_x_date(expand=expansion(0.02,0),date_breaks="month") + scale_y_continuous(expand=expansion(0.02,0)) + 
   # scale_x_log10() + # breaks=(0:(max(df_plot$mean)/2))*2, #breaks=1:n_wave,labels=sort(unique(df_plot$wave)),
   xlab("") + ylab("# of daily contacts") + labs(color="contact age",fill="contact age") +
   theme_bw() + standard_theme + theme(strip.text=element_text(size=13),panel.grid.minor=element_blank(),
                                       panel.grid.major.x=element_blank(),legend.position="top")
 # save
-ggsave(paste0("data/comix/contact_matrs/barplots/all_cntrs.png"), width=32,height=18,units="cm")
+ggsave(paste0("data/comix/contact_matrs_socrates/barplots/all_cntrs_",sel_var,".png"),
+       width=32,height=18,units="cm")
 
 ###
-# segment
-all_comix_matr %>% filter(contact %in% c("[0,2)","[2,5)","[5,18)","18+") & 
-                            particip %in% c("[0,2)","[2,5)","[5,18)","18+") & 
-                            !is.na(mean) & !wave %in% "All") %>% rename(`age of participant`=particip) %>% 
-  rowwise() %>% mutate(wave_date=(ifelse(wave %in% "All",wave,
-                substr(x=wave,4,nchar(wave)-ifelse(country %in% "Belgium",0,5))))) %>% 
-  ggplot() + facet_grid(`age of participant`~country,scales="free") + # scales="free_x"
-  geom_linerange(aes(x=mean,ymin=as.Date(wave_date)-5,ymax=as.Date(wave_date)+5,
-                      color=contact),size=1.5) + coord_flip() + # ,size=2
-  # scale_x_log10(expand=expansion(0.02,0),limits=c(0.1/2,100)) + 
-  scale_x_continuous(expand=expansion(0.03,0)) + scale_y_date(expand=expansion(0.02,0)) + 
-  # scale_x_log10() + # breaks=(0:(max(df_plot$mean)/2))*2, #breaks=1:n_wave,labels=sort(unique(df_plot$wave)),
-  ylab("") + xlab("# of daily contacts") + labs(color="age of contact",fill="age of contact") +
-  theme_bw() + standard_theme + theme(strip.text=element_text(size=13),panel.grid.minor=element_blank(),
-        panel.grid.major.x=element_blank(),legend.position="top")
+# # segment
+# all_comix_matr %>% filter(contact %in% c("[0,2)","[2,5)","[5,18)","18+") & 
+#                             particip %in% c("[0,2)","[2,5)","[5,18)","18+") & 
+#                             !is.na(mean) & !wave %in% "All") %>% rename(`age of participant`=particip) %>% 
+#   rowwise() %>% mutate(wave_date=(ifelse(wave %in% "All",wave,
+#                 substr(x=wave,4,nchar(wave)-ifelse(country %in% "Belgium",0,5))))) %>% 
+#   ggplot() + facet_grid(`age of participant`~country,scales="free") + # scales="free_x"
+#   geom_linerange(aes(x=mean,ymin=as.Date(wave_date)-5,ymax=as.Date(wave_date)+5,
+#                       color=contact),size=1.5) + coord_flip() + # ,size=2
+#   # scale_x_log10(expand=expansion(0.02,0),limits=c(0.1/2,100)) + 
+#   scale_x_continuous(expand=expansion(0.03,0)) + scale_y_date(expand=expansion(0.02,0)) + 
+#   # scale_x_log10() + # breaks=(0:(max(df_plot$mean)/2))*2, #breaks=1:n_wave,labels=sort(unique(df_plot$wave)),
+#   ylab("") + xlab("# of daily contacts") + labs(color="age of contact",fill="age of contact") +
+#   theme_bw() + standard_theme + theme(strip.text=element_text(size=13),panel.grid.minor=element_blank(),
+#         panel.grid.major.x=element_blank(),legend.position="top")
 # save
 # ggsave(paste0("data/comix/contact_matrs/linerange/all_cntrs_log10.png"), width=32,height=18,units="cm")
-ggsave(paste0("data/comix/contact_matrs/linerange/all_cntrs.png"), width=32,height=18,units="cm")
+ggsave(paste0("data/comix/contact_matrs_socrates/linerange/all_cntrs.png"), width=32,height=18,units="cm")
 
 ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### 
 ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### 
 ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### 
 # by downloading raw data from zenodo 
-# we don't need to do this for thosecountries where there's data through the shiny app
+# we don't need to do this for those countries where there's data through the shiny app
 # @ https://github.com/lwillem/socrates_rshiny can create the matrices
 #
 # all URLs
@@ -478,7 +493,9 @@ ylim_dummy = mean_cont_plot %>% ungroup() %>% select(part_age_group) %>% distinc
 mean_cont_plot %>% ggplot() + facet_wrap(~part_age_group,scales = "free_y") + 
   geom_line(aes(x=mid_date,y=mean)) + geom_ribbon(aes(x=mid_date,ymin=lci,ymax=uci),alpha=1/4) +
   geom_point(data=ylim_dummy,aes(x=mid_date,y=mean),color=NA) +
-  scale_x_date(expand=expansion(0.01,0),date_breaks="2 month") + scale_y_continuous(expand=expansion(0.01,0)) + 
-  xlab("") + ylab("mean # contacts") + theme_bw() + standard_theme + theme(strip.text=element_text(size=15))
+  scale_x_date(expand=expansion(0.01,0),date_breaks="2 month") + 
+  scale_y_continuous(expand=expansion(0.01,0)) + 
+  xlab("") + ylab("mean # contacts") + 
+  theme_bw() + standard_theme + theme(strip.text=element_text(size=15))
 # save
 ggsave(paste0("data/comix/england_mean_contacts_partipage_2020_2022.png"),width=33,height=22,units="cm")
