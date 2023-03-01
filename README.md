@@ -1,4 +1,4 @@
-## RSV transmission model with anadjustable delay distribution for immunity waning
+## RSV transmission model with adjustable delay distribution for immunity waning
 
 The C++ code for the transmission model is in the file [diff_delay_eq.cpp](https://github.com/mbkoltai/RSV_resurgence_europe/blob/main/rcpp_files/diff_delay_eq.cpp).  
 In contrast to ODE models, this is the numerical implementation of an integro-differential model, where immunity waning occurs after a given time, defined by a delay distribution, which I implemented as a discretised gamma-distribution.  
