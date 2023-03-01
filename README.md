@@ -10,6 +10,7 @@ We included this mechanism in our RSV model, because we believe that it plays a 
 -  [**rcpp_files** folder](https://github.com/mbkoltai/RSV_resurgence_europe/blob/main/rcpp_files/): 
 
 &nbsp;&nbsp;  - [diff_delay_eq.cpp](https://github.com/mbkoltai/RSV_resurgence_europe/blob/main/rcpp_files/diff_delay_eq.cpp): transmission model functions
+
 &nbsp;&nbsp;  - [fcns.cpp](https://github.com/mbkoltai/RSV_resurgence_europe/blob/main/rcpp_files/fcns.cpp): auxiliary functions to build the transmission model (generating indices for matrix/vector subsetting and multiplication)
 
 - [ecdc_data.R](https://github.com/mbkoltai/RSV_resurgence_europe/blob/main/ecdc_data.R): R script to import and visualise RSV data (mainly from ECDC dashboard)
